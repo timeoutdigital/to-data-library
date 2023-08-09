@@ -9,12 +9,13 @@ from tests.setup import setup
 
 def setUpModule():
     setup.create_bq_table()
-    # setup.create_bucket()
+    setup.create_bucket()
 
 
 def tearDownModule():
     setup.delete_bq_dataset()
-    # setup.delete_bucket()
+    setup.delete_bucket()
+    setup.cleanup()
 
 
 class TestBQ(unittest.TestCase):

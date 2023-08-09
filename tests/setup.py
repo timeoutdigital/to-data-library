@@ -1,7 +1,9 @@
 import boto3
+import glob
 import os
 from google.cloud import bigquery
 from google.cloud import exceptions
+from google.cloud import storage
 
 
 class Setup:
@@ -11,6 +13,7 @@ class Setup:
         self.project = os.environ.get('PROJECT', None)
         self.dataset_id = os.environ.get('DATASET_ID', None)
         self.table_id = os.environ.get('TABLE_ID', None)
+        self.bucket_name = os.environ.get('BUCKET_NAME', None)
         self.s3_region = os.environ.get('S3_REGION', None)
         self.s3_access_key = os.environ.get('S3_ACCESS_KEY', None)
         self.s3_secret_key = os.environ.get('S3_SECRET_KEY', None)
@@ -62,5 +65,33 @@ class Setup:
         s3_client.Bucket(self.s3_bucket).Object('sample.csv').delete()
         s3_client.Bucket(self.s3_bucket).Object('s3_upload_file.csv').delete()
 
+    def create_bucket(self):
+        storage_client = storage.Client(project=self.project)
 
-setup = Setup()
+        try:
+            storage_client.get_bucket(self.bucket_name)
+            self.delete_bucket()
+        except exceptions.NotFound:
+            pass
+        finally:
+            bucket = storage_client.create_bucket(self.bucket_name, location='EU')
+
+        blob = bucket.blob('sample.csv')
+        blob.upload_from_filename('tests/data/sample.csv')
+
+    def delete_bucket(self):
+
+        storage_client = storage.Client(project=self.project)
+        bucket = storage_client.get_bucket(self.bucket_name)
+
+        blobs = storage_client.list_blobs(self.bucket_name)
+        for blob in blobs:
+            blob.delete()
+
+        bucket.delete()
+
+    def cleanup(self):
+        for x in glob.glob("*.csv"):
+            os.remove(x)
+        for x in glob.glob("actors*"):
+            os.remove(x)

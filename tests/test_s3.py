@@ -12,6 +12,7 @@ def setUpModule():
 
 def tearDownModule():
     setup.remove_s3_files()
+    setup.cleanup()
 
 
 class TestS3(unittest.TestCase):

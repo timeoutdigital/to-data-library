@@ -12,5 +12,6 @@ setup(name='to-data-library',
           "Jinja2",
           "boto3",
           "parse",
+          "pysftp",
           "delegator.py",
           "markupsafe"])
