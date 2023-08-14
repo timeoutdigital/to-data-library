@@ -95,3 +95,5 @@ class Setup:
             os.remove(x)
         for x in glob.glob("actors*"):
             os.remove(x)
+
+setup=Setup()
