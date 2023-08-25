@@ -13,7 +13,7 @@ class Client:
         self.project = project
         self.storage_client = storage.Client(project=self.project)
 
-    def download(self, gs_uri, destination_file_name=''):
+    def download(self, gs_uri, destination_file_name=None):
         """Download from Google Storage to local.
 
         Args:
@@ -21,7 +21,7 @@ class Client:
             destination_file_name (str):  The destination file name. For example: ``/some_path/some_file_name``.
             If not provided, destination_file_name will be name of file in GCS.
         """
-        if destination_file_name == '':
+        if not destination_file_name:
             destination_file_name = gs_uri.split('/')[-1]
         
         with open(destination_file_name, 'wb') as file_obj:
