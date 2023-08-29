@@ -18,5 +18,5 @@ phases:
   build:
     on-failure: ABORT
     commands:
-    - pre-commit run --all-files
+    - SKIP=no-commit-to-branch pre-commit run --all-files
     - python -m unittest
