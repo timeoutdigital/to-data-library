@@ -1,8 +1,10 @@
+import os
+import sys
+
 import boto3
 import botocore
-import os
 import parse
-import sys
+
 from to_data_library.data import logs
 
 

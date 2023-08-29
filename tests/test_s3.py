@@ -1,9 +1,10 @@
-import unittest
 import os
+import unittest
+
 import boto3
 
-from to_data_library.data.s3 import Client
 from tests.setup import setup
+from to_data_library.data.s3 import Client
 
 
 def setUpModule():

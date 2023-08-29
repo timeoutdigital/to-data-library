@@ -1,11 +1,12 @@
-oauth2client
+boto3
+delegator.py
 google-api-python-client
 google-cloud-bigquery
 google-cloud-storage
-paramiko
 Jinja2
-boto3
-parse
-delegator.py
 markupsafe
+oauth2client
+paramiko
+parse
+pre-commit
 pysftp
