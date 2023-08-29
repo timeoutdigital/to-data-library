@@ -3,7 +3,6 @@ import sys
 
 import boto3
 import botocore
-import parse
 
 from to_data_library.data import logs
 
@@ -17,12 +16,11 @@ class Client:
                                      {region}:{access_key}:{secret_key}
     """
 
-    def __init__(self, connection_string):
-        parsed_connection = parse.parse('{region}:{access_key}:{secret_key}', connection_string)
-        self.s3_client = boto3.resource(service_name='s3',
-                                        region_name=parsed_connection['region'],
-                                        aws_access_key_id=parsed_connection['access_key'],
-                                        aws_secret_access_key=parsed_connection['secret_key'])
+    def __init__(self, region):
+        self.s3_client = boto3.resource(
+            service_name='s3',
+            region_name=region
+        )
 
     def download(self, bucket_name, object_name, local_path='.'):
         """
