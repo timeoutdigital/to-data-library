@@ -1,9 +1,10 @@
-import unittest
 import os
+import unittest
+
 import boto3
 
-from to_data_library.data.s3 import Client
 from tests.setup import setup
+from to_data_library.data.s3 import Client
 
 
 def setUpModule():
@@ -45,7 +46,7 @@ class TestS3(unittest.TestCase):
                                    aws_secret_access_key=self.setup.s3_secret_key)
         bucket = s3_client.Bucket(setup.s3_bucket)
         obj = list(bucket.objects.filter(Prefix='sample.csv'))
-        self.assertTrue(any([w.key == 'sample.csv' for w in obj]))
+        self.assertTrue(any(w.key == 'sample.csv' for w in obj))
 
         test_client.upload('tests/data/sample.csv',
                            setup.s3_bucket,
@@ -56,4 +57,4 @@ class TestS3(unittest.TestCase):
                                    aws_secret_access_key=self.setup.s3_secret_key)
         bucket = s3_client.Bucket(setup.s3_bucket)
         obj = list(bucket.objects.filter(Prefix='s3_upload_file.csv'))
-        self.assertTrue(any([w.key == 's3_upload_file.csv' for w in obj]))
+        self.assertTrue(any(w.key == 's3_upload_file.csv' for w in obj))

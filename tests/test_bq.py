@@ -1,10 +1,11 @@
+import csv
 import unittest
 import unittest.mock
-import csv
+
 from google.cloud import bigquery
 
-from to_data_library.data import bq
 from tests.setup import setup
+from to_data_library.data import bq
 
 
 def setUpModule():

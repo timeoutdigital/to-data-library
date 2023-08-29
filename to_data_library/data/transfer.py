@@ -1,17 +1,12 @@
 import os
+
 import boto3
 import parse
-
-from google.cloud import bigquery
-from google.cloud import storage
 from google.api_core import exceptions
-from to_data_library.data import ftp
-from to_data_library.data._helper import merge_files
-from to_data_library.data._helper import get_bq_write_disposition
-from to_data_library.data import logs
-from to_data_library.data import gs
-from to_data_library.data import s3
-from to_data_library.data import bq
+from google.cloud import bigquery, storage
+
+from to_data_library.data import bq, ftp, gs, logs, s3
+from to_data_library.data._helper import get_bq_write_disposition, merge_files
 
 
 class Client:
@@ -147,7 +142,7 @@ class Client:
         job.result()
 
     def ftp_to_bq(self, ftp_connection_string, ftp_filepath, bq_table, write_preference, separator=',',
-                  skip_leading_rows=True, bq_table_schema=[], partition_date=None):
+                  skip_leading_rows=True, bq_table_schema=None, partition_date=None):
         """Export from FTP to BigQuery
 
         Args:
@@ -313,7 +308,7 @@ class Client:
 
     def s3_to_bq(self, s3_connection_string, bucket_name, object_name,
                  bq_table, write_preference, auto_detect=True, separator=',',
-                 skip_leading_rows=True, schema=[], partition_date=None):
+                 skip_leading_rows=True, schema=None, partition_date=None):
         """
         Exports S3 file to BigQuery table
 

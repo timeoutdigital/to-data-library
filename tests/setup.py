@@ -1,9 +1,8 @@
-import boto3
 import glob
 import os
-from google.cloud import bigquery
-from google.cloud import exceptions
-from google.cloud import storage
+
+import boto3
+from google.cloud import bigquery, exceptions, storage
 
 
 class Setup:
@@ -96,4 +95,5 @@ class Setup:
         for x in glob.glob("actors*"):
             os.remove(x)
 
-setup=Setup()
+
+setup = Setup()

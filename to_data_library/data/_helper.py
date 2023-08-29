@@ -1,6 +1,3 @@
-
-import delegator
-
 from google.cloud import bigquery
 
 

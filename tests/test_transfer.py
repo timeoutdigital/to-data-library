@@ -1,10 +1,10 @@
-import unittest
 import csv
-from google.cloud import bigquery
-from google.cloud import storage
+import unittest
 
-from to_data_library.data import transfer
+from google.cloud import bigquery, storage
+
 from tests.setup import setup
+from to_data_library.data import transfer
 
 
 def setUpModule():

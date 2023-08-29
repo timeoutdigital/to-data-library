@@ -1,14 +1,12 @@
-import uuid
 import csv
+import uuid
 
-from jinja2 import Template
-from google.cloud import storage
-from google.cloud import bigquery
 from google.auth import default
+from google.cloud import bigquery, storage
+from jinja2 import Template
 
-from to_data_library.data import transfer
+from to_data_library.data import logs, transfer
 from to_data_library.data._helper import get_bq_write_disposition
-from to_data_library.data import logs
 
 
 class Client:
