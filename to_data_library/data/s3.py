@@ -12,8 +12,7 @@ class Client:
         Client to s3 Storage functionality.
 
         Args:
-            connection_string (str): The S3 connection string in the format
-                                     {region}:{access_key}:{secret_key}
+            region (str): The AWS region
     """
 
     def __init__(self, region):
@@ -34,7 +33,7 @@ class Client:
 
         Example:
             >>> from to_data_library.data import s3
-            >>> client = s3.Client('region:access_key:secret_key')
+            >>> client = s3.Client('region')
             >>> client.download(bucket_name='my-s3-bucket-name',
             >>>                 object_name='folder-name/object-name',
             >>>                 local_path='/my-local/folder/file.csv')
@@ -64,7 +63,7 @@ class Client:
 
         Example:
             >>> from to_data_library.data import s3
-            >>> client = s3.Client('region:access_key:secret_key')
+            >>> client = s3.Client('region')
             >>> client.upload(local_path='/my-local/folder/file.csv',
             >>>               bucket_name='my-s3-bucket-name',
             >>>               object_name='object-name')
@@ -90,7 +89,7 @@ class Client:
 
         Example:
             >>> from to_data_library.data import s3
-            >>> client = s3.Client('region:access_key:secret_key')
+            >>> client = s3.Client('region')
             >>> client.list_files(bucket_name='s3-bucket-name', path='/path/inside/bucket/')
         """
 
