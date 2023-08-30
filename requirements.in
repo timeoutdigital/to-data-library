@@ -5,8 +5,10 @@ google-cloud-bigquery
 google-cloud-storage
 Jinja2
 markupsafe
+moto[s3]
 oauth2client
 paramiko
 parse
+pip-tools
 pre-commit
 pysftp

@@ -1,7 +1,6 @@
 import glob
 import os
 
-import boto3
 from google.cloud import bigquery, exceptions, storage
 
 
@@ -13,10 +12,8 @@ class Setup:
         self.dataset_id = os.environ.get('DATASET_ID', None)
         self.table_id = os.environ.get('TABLE_ID', None)
         self.bucket_name = os.environ.get('BUCKET_NAME', None)
-        self.s3_region = os.environ.get('S3_REGION', None)
-        self.s3_access_key = os.environ.get('S3_ACCESS_KEY', None)
-        self.s3_secret_key = os.environ.get('S3_SECRET_KEY', None)
-        self.s3_bucket = os.environ.get('S3_BUCKET', None)
+        self.s3_region = 'eu-west-1'
+        self.s3_bucket = 'dummy-bucket'
 
     def create_bq_table(self):
         dataset_ref = bigquery.DatasetReference(project=self.project, dataset_id=self.dataset_id)
@@ -45,24 +42,6 @@ class Setup:
     def delete_bq_dataset(self):
         bigquery_client = bigquery.Client(project=self.project)
         bigquery_client.delete_dataset(self.dataset_id, delete_contents=True)
-
-    def upload_s3_files(self):
-        s3_client = boto3.resource(service_name='s3',
-                                   region_name=self.s3_region,
-                                   aws_access_key_id=self.s3_access_key,
-                                   aws_secret_access_key=self.s3_secret_key)
-        bucket = s3_client.Bucket(self.s3_bucket)
-        bucket.upload_file('tests/data/sample.csv', 'download_sample.csv')
-
-    def remove_s3_files(self):
-        s3_client = boto3.resource(service_name='s3',
-                                   region_name=self.s3_region,
-                                   aws_access_key_id=self.s3_access_key,
-                                   aws_secret_access_key=self.s3_secret_key)
-
-        s3_client.Bucket(self.s3_bucket).Object('download_sample.csv').delete()
-        s3_client.Bucket(self.s3_bucket).Object('sample.csv').delete()
-        s3_client.Bucket(self.s3_bucket).Object('s3_upload_file.csv').delete()
 
     def create_bucket(self):
         storage_client = storage.Client(project=self.project)
