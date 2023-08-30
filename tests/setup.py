@@ -1,7 +1,6 @@
 import glob
 import os
 
-import boto3
 from google.cloud import bigquery, exceptions, storage
 
 
@@ -43,24 +42,6 @@ class Setup:
     def delete_bq_dataset(self):
         bigquery_client = bigquery.Client(project=self.project)
         bigquery_client.delete_dataset(self.dataset_id, delete_contents=True)
-
-    def upload_s3_files(self):
-        s3_client = boto3.resource(
-            service_name='s3',
-            region_name=self.s3_region
-        )
-        bucket = s3_client.Bucket(self.s3_bucket)
-        bucket.upload_file('tests/data/sample.csv', 'download_sample.csv')
-
-    def remove_s3_files(self):
-        s3_client = boto3.resource(service_name='s3',
-                                   region_name=self.s3_region,
-                                   aws_access_key_id=self.s3_access_key,
-                                   aws_secret_access_key=self.s3_secret_key)
-
-        s3_client.Bucket(self.s3_bucket).Object('download_sample.csv').delete()
-        s3_client.Bucket(self.s3_bucket).Object('sample.csv').delete()
-        s3_client.Bucket(self.s3_bucket).Object('s3_upload_file.csv').delete()
 
     def create_bucket(self):
         storage_client = storage.Client(project=self.project)
