@@ -1,32 +1,33 @@
 # to-data-library
 Timeout Data Teams Official Data Library
 
+## Python packages
+
+- `setup.py` includes a list of the 3rd party packages required by the this package when distbuted.
+- `requirements.in` should include the packages in `setup.py` plus those required for dev/test.
+- `requirements.txt` is built from `requirements.in` using `pip-compile`.
+
 ## local dev and testing
 
 - Install timeout-tools
 
 ```
-$ pip install git+ssh://git@github.com/timeoutdigital/timeout-tools
+pip install git+ssh://git@github.com/timeoutdigital/timeout-tools
 ```
 
 - If you don't have pyenv/pyenv-virtual installed
 
 ```
-$ timeout-tools pyenv-install
+timeout-tools pyenv-install
 ```
 
-- setup the python environment
-```
-$ timeout-tools python-setup
-```
-
-- install this repo
+- clone this repo and setup python env
 
 ```
-$ pip install git+https://github.com/timeoutdigital/to-data-library.git@v.1.0.1
+timeout-tools ws to-data-library <ticket_num>
 ```
 
-- populate environment variables # TODO: change to auto populate
+- populate environment variables # TODO: mock tests so removing requirement for vars
 
 ```
 export PROJECT=to-data-platform-dev
