@@ -1,4 +1,6 @@
 import unittest
+from unittest import mock
+from unittest.mock import Mock
 import os
 
 from to_data_library.data.gs import Client
@@ -6,34 +8,44 @@ from tests.setup import setup
 from google.cloud import storage
 
 
-def setUpModule():
-    setup.create_bucket()
+# def setUpModule():
+#     setup.create_bucket()
 
 
 def tearDownModule():
-    setup.delete_bucket()
     setup.cleanup()
 
 
 class TestGS(unittest.TestCase):
 
-    def __init__(self, *args, **kwargs):
-        super(TestGS, self).__init__(*args, **kwargs)
-        self.setup = setup
-        self.gs_uri = f'gs://{self.setup.bucket_name}/sample.csv'
+    # def __init__(self, *args, **kwargs):
+    #     super(TestGS, self).__init__(*args, **kwargs)
+    #     self.setup = setup
+    #     self.gs_uri = f'gs://{self.setup.bucket_name}/sample.csv'
         
-    def test_download(self):
-        test_client = Client(project=self.setup.project)
+    @mock.patch('to_data_library.data.gs.storage')
+    def test_download(self, mock_storage):
+        mock_gcs_client = mock_storage.Client.return_value
+        mock_bucket = Mock()
+        mock_gcs_client.bucket.return_value = mock_bucket
+        mock_gcs_client.download_blob_to_file.return_value = None
         
-        test_client.download(gs_uri=self.gs_uri)
-        self.assertTrue(os.path.exists('sample.csv'))
+        test_client = Client(project='fake_project')
         
-        test_client.download(gs_uri=self.gs_uri,
-                             destination_file_name='download_sample.csv')
-        self.assertTrue(os.path.exists('download_sample.csv'))
-
-    def test_upload(self):
-        test_client = Client(project=self.setup.project)
+        test_client.download(gs_uri='/fake_uri.csv')
+        self.assertTrue(os.path.exists('fake_uri.csv'))
+        
+        test_client.download(gs_uri='/fake_uri', destination_file_name='fake_des.csv')
+        self.assertTrue(os.path.exists('fake_des.csv'))
+   
+    @mock.patch('to_data_library.data.gs.storage')
+    def test_upload(self, mock_storage):
+        mock_gcs_client = mock_storage.Client.return_value
+        mock_bucket = Mock()
+        mock_bucket.blob.return_value = 'test_file.csv'
+        mock_gcs_client.bucket.return_value = mock_bucket
+        
+        test_client = Client(project='fake_project')
         test_client.upload('tests/data/sample.csv', self.setup.bucket_name, 'test_file.csv')
         
         storage_client = storage.Client()
@@ -41,7 +53,7 @@ class TestGS(unittest.TestCase):
     
         self.assertIn('test_file.csv', blob_list)
         
-        
+    @mock.patch('to_data_library.data.gs.storage')
     def test_create_bucket(self):
         test_bucket_name = '1234_sample_bucket'
         test_client = Client(project=self.setup.project)
