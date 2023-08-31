@@ -8,21 +8,11 @@ from google.cloud import storage
 from tests.setup import setup
 from to_data_library.data.gs import Client
 
-# def setUpModule():
-#     setup.create_bucket()
-
-
 def tearDownModule():
     setup.cleanup()
 
 
 class TestGS(unittest.TestCase):
-
-    # def __init__(self, *args, **kwargs):
-    #     super(TestGS, self).__init__(*args, **kwargs)
-    #     self.setup = setup
-    #     self.gs_uri = f'gs://{self.setup.bucket_name}/sample.csv'
-
     @mock.patch('to_data_library.data.gs.storage')
     def test_download(self, mock_storage):
         test_client = Client(project='fake_project')
