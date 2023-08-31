@@ -37,7 +37,7 @@ class Client:
         """
         if not blob_name:
             blob_name = source_file_name.split('/')[-1]
-            
+
         bucket = self.storage_client.bucket(bucket_name)
         blob = bucket.blob(blob_name)
         blob.upload_from_filename(source_file_name)
