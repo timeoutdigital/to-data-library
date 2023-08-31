@@ -25,10 +25,6 @@ class TestGS(unittest.TestCase):
         
     @mock.patch('to_data_library.data.gs.storage')
     def test_download(self, mock_storage):
-        mock_gcs_client = mock_storage.Client.return_value
-        mock_bucket = Mock()
-        mock_gcs_client.bucket.return_value = mock_bucket
-        mock_gcs_client.download_blob_to_file.return_value = None
         
         test_client = Client(project='fake_project')
         
