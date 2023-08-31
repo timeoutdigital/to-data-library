@@ -23,7 +23,7 @@ class Client:
         """
         if not destination_file_name:
             destination_file_name = gs_uri.split('/')[-1]
-        
+
         with open(destination_file_name, 'wb') as file_obj:
             self.storage_client.download_blob_to_file(gs_uri, file_obj)
 
