@@ -8,6 +8,10 @@ from tests.setup import setup
 from to_data_library.data.s3 import Client
 
 
+def tearDownModule():
+    setup.cleanup()
+
+
 @mock_s3
 class TestS3(unittest.TestCase):
 
