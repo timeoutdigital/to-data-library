@@ -38,9 +38,8 @@ class TestBQ(unittest.TestCase):
 
         mock_storage.assert_called_once()
 
-    def test_download_table(self, mock_storage, mock_transfer, mock_bq):
+    def test_download_table(self):
         # test downloading a BQ table
-
         bq_client = bq.Client(project=self.setup.project)
         downloaded_file_names = bq_client.download_table(
             table='{}.{}.{}'.format(self.setup.project, self.setup.dataset_id, self.setup.table_id)
