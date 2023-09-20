@@ -30,7 +30,7 @@ class TestBQ(unittest.TestCase):
     def test_create_tmp_bucket_in_gcs(self, mock_bigquery, mock_storage):
         mock_storage_client = mock_storage.return_value
 
-        bq_client = bq.Client('fake')
+        bq_client = bq.Client(project='fake_project')
         bq_client._create_tmp_bucket_in_gcs(mock_storage_client)
 
         mock_storage_client.create_bucket.assert_called_once()

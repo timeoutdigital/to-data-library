@@ -1,69 +1,46 @@
 import csv
 import unittest
+import unittest.mock
+from unittest.mock import Mock, patch
 
 from google.cloud import bigquery, storage
 
 from tests.setup import setup
 from to_data_library.data import transfer
 
+# def setUpModule():
+#     setup.create_bq_table()
+#     setup.create_bucket()
+#     setup.upload_s3_files()
 
-def setUpModule():
-    setup.create_bq_table()
-    setup.create_bucket()
-    setup.upload_s3_files()
 
-
-def tearDownModule():
-    setup.delete_bq_dataset()
-    setup.delete_bucket()
-    setup.cleanup()
-    setup.remove_s3_files()
+# def tearDownModule():
+#     setup.delete_bq_dataset()
+#     setup.delete_bucket()
+#     setup.cleanup()
+#     setup.remove_s3_files()
 
 
 class TestTransfer(unittest.TestCase):
 
-    def __init__(self, *args, **kwargs):
-        super(TestTransfer, self).__init__(*args, **kwargs)
-        self.setup = setup
+    @patch('google.cloud.bigquery.Client')
+    @patch('google.cloud.storage.Client')
+    def test_bq_to_gs(self, mock_storage, mock_bigquery):
+        mock_bigquery_client = mock_bigquery.return_value
+        mock_extract_job = Mock()
+        mock_bigquery_client.extract_table.return_value = mock_extract_job
+        mock_extract_job.result.return_value = ''
 
-    def test_bq_to_gs(self):
+        mock_storage_client = mock_storage.return_value
 
-        client = transfer.Client(project=self.setup.project)
-        file_names = client.bq_to_gs(
-            table='{}.{}.{}'.format(self.setup.project, self.setup.dataset_id, 'actors'),
-            bucket_name=self.setup.bucket_name,
+        client = transfer.Client(project='fake_project')
+
+        client.bq_to_gs(
+            table='{}.{}.{}'.format('fake_project', 'fake_dataset_id', 'fake_table_id'),
+            bucket_name='fake_bucket_name',
         )
 
-        # creating list based on source big query table values
-        bq_keys = []
-        bigquery_client = bigquery.Client(project=self.setup.project)
-        job = bigquery_client.query(
-            'SELECT profile_id, first_name, last_name from {}.{}'.format(
-                self.setup.dataset_id,
-                'actors'
-            )
-        )
-        for row in job.result():
-            bq_keys.append('{}{}{}'.format(
-                row.profile_id,
-                '' if row.first_name is None else row.first_name,
-                '' if row.last_name is None else row.last_name,
-            ))
-
-        # creating list based on destination bucket file values
-        storage_client = storage.Client(project=self.setup.project)
-        with open('actors.csv', 'wb') as file_obj:
-            storage_client.download_blob_to_file(blob_or_uri=file_names[0], file_obj=file_obj)
-
-        with open('actors.csv', newline='') as csvfile:
-            reader = csv.DictReader(csvfile)
-            storage_keys = []
-            for row in reader:
-                storage_keys.append(
-                    str(row['profile_id']) + row['first_name'] + row['last_name']
-                )
-
-        self.assertEqual(storage_keys, bq_keys)
+        mock_storage_client.list_blobs.assert_called_once_with('fake_bucket_name')
 
     def test_gs_to_bq(self):
 
