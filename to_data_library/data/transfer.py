@@ -284,12 +284,12 @@ class Client:
 
         # Retrieve the file(s) from S3 matching to the object
         logs.client.logger.info('Finding files in S3 bucket')
-        s3_client = boto3.client('s3',
-                                 region_name=parsed_connection['region'],
-                                 aws_access_key_id=parsed_connection['access_key'],
-                                 aws_secret_access_key=parsed_connection['secret_key'])
+        s3_client_boto = boto3.client('s3',
+                                      region_name=parsed_connection['region'],
+                                      aws_access_key_id=parsed_connection['access_key'],
+                                      aws_secret_access_key=parsed_connection['secret_key'])
 
-        s3_files = self._get_keys_in_s3_bucket(s3_client,
+        s3_files = self._get_keys_in_s3_bucket(s3_client_boto,
                                                bucket_name='s3_bucket_name',
                                                prefix_name='s3_object_name')
 
