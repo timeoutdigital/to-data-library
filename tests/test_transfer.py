@@ -74,7 +74,9 @@ class TestTransfer(unittest.TestCase):
                 'NULL' if row.last_name is None else row.last_name,
             ))
 
-    def test_s3_to_gs(self):
+    # @patch('parse.parse')
+    def test_s3_to_gs(self, mock_parse):
+        # mock_parsed_connection = mock_parse.return_value
 
         client = transfer.Client(project=setup.project)
         client.s3_to_gs(s3_connection_string="{}:{}:{}".format(setup.s3_region, setup.s3_access_key,

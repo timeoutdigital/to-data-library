@@ -288,11 +288,14 @@ class Client:
                                  region_name=parsed_connection['region'],
                                  aws_access_key_id=parsed_connection['access_key'],
                                  aws_secret_access_key=parsed_connection['secret_key'])
-        response = s3_client.list_objects_v2(
-            Bucket=s3_bucket_name, Prefix=s3_object_name)
+
         s3_files = []
-        for content in response.get('Contents', []):
-            s3_files.append(content.get('Key'))
+        paginator = s3_client.get_paginator('list_objects_v2')
+        pages = paginator.paginate(Bucket='s3_bucket_name', Prefix='s3_object_name')
+        for page in pages:
+            for obj in page['Contents']:
+                s3_files.append(obj.get('key'))
+
         logs.client.logger.info(f'Found {str(s3_files)} files in S3')
 
         s3_client = s3.Client(s3_connection_string)
