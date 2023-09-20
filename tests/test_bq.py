@@ -1,6 +1,7 @@
 import csv
 import unittest
 import unittest.mock
+from unittest.mock import Mock, patch
 
 from google.cloud import bigquery
 
@@ -25,7 +26,19 @@ class TestBQ(unittest.TestCase):
         super(TestBQ, self).__init__(*args, **kwargs)
         self.setup = setup
 
-    def test_download_table(self):
+    @patch('google.cloud.storage.Client')
+    @patch('google.cloud.bigquery.Client')
+    def test_create_tmp_bucket_in_gcs(self, mock_storage, mock_bigquery):
+        mock_storage_client = Mock()
+        mock_storage_client.create_bucket.return_value = ''
+        mock_storage.Client.return_value = mock_storage_client
+
+        bq_client = bq.Client('test')
+        bq_client._create_tmp_bucket_in_gcs(mock_storage)
+
+        mock_storage.assert_called_once()
+
+    def test_download_table(self, mock_storage, mock_transfer, mock_bq):
         # test downloading a BQ table
 
         bq_client = bq.Client(project=self.setup.project)

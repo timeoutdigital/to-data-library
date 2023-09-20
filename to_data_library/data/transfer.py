@@ -61,7 +61,6 @@ class Client:
             )
         )
         extract_job.result()
-
         storage_client = storage.Client(project=self.project)
         logs.client.logger.info(
             'Getting the list of available blobs in gs://{}'.format(bucket_name))

@@ -52,29 +52,39 @@ class Client:
             >>> client.download_table(table='my-project-id.my_dataset.my_table')
 
         """
-
         storage_client = storage.Client(project=self.project)
-        bucket_name = str(uuid.uuid4())
-        logs.client.logger.info('Creating temporary bucket gs://{}'.format(bucket_name))
-        tmp_bucket = storage_client.create_bucket(bucket_name, location='EU')
-
         transfer_client = transfer.Client(project=self.project)
-        transfer_client.bq_to_gs(table, bucket_name, separator=separator, print_header=print_header)
 
-        logs.client.logger.info('Getting the list of available blobs in gs://{}'.format(bucket_name))
-        blobs = storage_client.list_blobs(bucket_name)
+        # Transfer table from BQ to a temporary bucket in GCS.
+        tmp_bucket = self._create_tmp_bucket_in_gcs(storage_client)
+        transfer_client.bq_to_gs(table, tmp_bucket.name, separator=separator, print_header=print_header)
+
+        # Download all blobs in temporary bucket to local and return a list of local filenames.
+        logs.client.logger.info('Getting the list of available blobs in gs://{}'.format(tmp_bucket.name))
+        blobs = storage_client.list_blobs(tmp_bucket.name)
+
         blob_names = []
         for blob in blobs:
-            logs.client.logger.info('Downloading gs://{}/{}'.format(bucket_name, blob.name))
+            logs.client.logger.info('Downloading gs://{}/{}'.format(tmp_bucket.name, blob.name))
             blob.download_to_filename('{}/{}'.format(local_folder, blob.name))
             blob_names.append(blob.name)
-            logs.client.logger.info('Deleting gs://{}/{}'.format(bucket_name, blob.name))
+            logs.client.logger.info('Deleting gs://{}/{}'.format(tmp_bucket.name, blob.name))
             blob.delete()
 
-        logs.client.logger.info('Deleting bucket gs://{}'.format(bucket_name))
+        logs.client.logger.info('Deleting bucket gs://{}'.format(tmp_bucket.name))
         tmp_bucket.delete()
 
         return blob_names
+
+    def _create_tmp_bucket_in_gcs(self, storage_client):
+        """ Creates a temporary bucket in GCS using a storage client as an input
+        Args:
+            storage_client (Client):  A client on google storage"""
+        bucket_name = str(uuid.uuid4())
+        logs.client.logger.info('Creating temporary bucket gs://{}'.format(bucket_name))
+        tmp_bucket = storage_client.create_bucket(bucket_name, location='EU')
+        logs.client.logger.info('Done')
+        return tmp_bucket
 
     def upload_table(self, file_path, table, write_preference, separator=',', auto_detect=True, skip_leading_rows=True,
                      schema=(), partition_date=None, partition_field=None, max_bad_records=0):
