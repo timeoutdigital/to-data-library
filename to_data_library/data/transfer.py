@@ -290,11 +290,12 @@ class Client:
                                       aws_secret_access_key=parsed_connection['secret_key'])
 
         s3_files = self._get_keys_in_s3_bucket(s3_client_boto,
-                                               bucket_name='s3_bucket_name',
-                                               prefix_name='s3_object_name')
+                                               bucket_name=s3_bucket_name,
+                                               prefix_name=s3_object_name)
 
         logs.client.logger.info(f'Found {str(s3_files)} files in S3')
 
+        # For every key found in s3, download to local and then upload to desired GS bucket.
         s3_client = s3.Client(s3_connection_string)
         gs_client = gs.Client(self.project)
         for s3_file in s3_files:

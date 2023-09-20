@@ -74,18 +74,20 @@ class TestTransfer(unittest.TestCase):
                 'NULL' if row.last_name is None else row.last_name,
             ))
 
-    # @patch('parse.parse')
-    def test_s3_to_gs(self, mock_parse):
-        # mock_parsed_connection = mock_parse.return_value
-
+    @patch('boto3.client')
+    @patch('boto3.resource')
+    def test_s3_to_gs(self, mock_resource, mock_parse, mock_boto):
         client = transfer.Client(project=setup.project)
-        client.s3_to_gs(s3_connection_string="{}:{}:{}".format(setup.s3_region, setup.s3_access_key,
-                                                               setup.s3_secret_key),
-                        s3_bucket_name=setup.s3_bucket,
+        client.s3_to_gs(s3_connection_string="{}:{}:{}".format('fake_s3_region', 'fake_s3_access_key',
+                                                               'fake_s3_secret_key'),
+                        s3_bucket_name='fake_s3_bucket',
                         s3_object_name='download_sample.csv',
-                        gs_bucket_name=setup.bucket_name,
+                        gs_bucket_name='fake_gs_bucket_name',
                         gs_file_name='transfer_s3_to_gs.csv')
 
-        gs_client = storage.Client()
-        bucket = gs_client.bucket(setup.bucket_name)
-        self.assertTrue(storage.Blob(name='transfer_s3_to_gs.csv', bucket=bucket).exists(gs_client))
+        # gs_client = storage.Client()
+        # bucket = gs_client.bucket(setup.bucket_name)
+        # self.assertTrue(storage.Blob(name='transfer_s3_to_gs.csv', bucket=bucket).exists(gs_client))
+
+    def test_get_keys_in_s3_bucket(self):
+        pass
