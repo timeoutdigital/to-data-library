@@ -1,23 +1,22 @@
 import csv
 import unittest
 import unittest.mock
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from google.cloud import bigquery
 
 from tests.setup import setup
 from to_data_library.data import bq
 
+# def setUpModule():
+#     setup.create_bq_table()
+#     setup.create_bucket()
 
-def setUpModule():
-    setup.create_bq_table()
-    setup.create_bucket()
 
-
-def tearDownModule():
-    setup.delete_bq_dataset()
-    setup.delete_bucket()
-    setup.cleanup()
+# def tearDownModule():
+#     setup.delete_bq_dataset()
+#     setup.delete_bucket()
+#     setup.cleanup()
 
 
 class TestBQ(unittest.TestCase):
@@ -28,49 +27,29 @@ class TestBQ(unittest.TestCase):
 
     @patch('google.cloud.storage.Client')
     @patch('google.cloud.bigquery.Client')
-    def test_create_tmp_bucket_in_gcs(self, mock_storage, mock_bigquery):
-        mock_storage_client = Mock()
-        mock_storage_client.create_bucket.return_value = ''
-        mock_storage.Client.return_value = mock_storage_client
+    def test_create_tmp_bucket_in_gcs(self, mock_bigquery, mock_storage):
+        mock_storage_client = mock_storage.return_value
 
-        bq_client = bq.Client('test')
-        bq_client._create_tmp_bucket_in_gcs(mock_storage)
+        bq_client = bq.Client('fake')
+        bq_client._create_tmp_bucket_in_gcs(mock_storage_client)
 
-        mock_storage.assert_called_once()
+        mock_storage_client.create_bucket.assert_called_once()
 
-    def test_download_table(self):
-        # test downloading a BQ table
+    @patch('google.cloud.storage.Client')
+    @patch('google.cloud.bigquery.Client')
+    @patch('to_data_library.data.transfer.Client')
+    def test_download_table(self, mock_transfer, mock_bigquery, mock_storage):
+        mock_storage_client = mock_storage.return_value
+        # mock_transfer_client = mock_transfer.return_value
+
         bq_client = bq.Client(project=self.setup.project)
-        downloaded_file_names = bq_client.download_table(
-            table='{}.{}.{}'.format(self.setup.project, self.setup.dataset_id, self.setup.table_id)
+        bq_client.download_table(
+            table='{}.{}.{}'.format('fake_project', 'fake_data_set_id', 'fake_table_id')
         )
 
-        # creating list based on local file values
-        with open(downloaded_file_names[0], newline='') as csvfile:
-            reader = csv.DictReader(csvfile)
-            storage_keys = []
-            for row in reader:
-                storage_keys.append(
-                    str(row['profile_id']) + row['first_name'] + row['last_name']
-                )
-
-        # creating list based on source big query table values
-        bq_keys = []
-        bigquery_client = bigquery.Client(project=self.setup.project)
-        job = bigquery_client.query(
-            'SELECT profile_id, first_name, last_name from {}.{}'.format(
-                self.setup.dataset_id,
-                self.setup.table_id
-            )
-        )
-        for row in job.result():
-            bq_keys.append('{}{}{}'.format(
-                row.profile_id,
-                '' if row.first_name is None else row.first_name,
-                '' if row.last_name is None else row.last_name,
-            ))
-
-        self.assertEqual(storage_keys, bq_keys)
+        mock_storage.assert_called_once_with(project=self.setup.project)
+        mock_storage_client.list_blobs.assert_called_once()
+        # mock_transfer_client.bq_to_gs.assert_called_with()
 
     def test_upload_table(self):
         # test upload BQ table

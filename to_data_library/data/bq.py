@@ -55,11 +55,11 @@ class Client:
         storage_client = storage.Client(project=self.project)
         transfer_client = transfer.Client(project=self.project)
 
-        # Transfer table from BQ to a temporary bucket in GCS.
+        # Create tmp bucket and transfer table from BQ to a temporary bucket in GCS
         tmp_bucket = self._create_tmp_bucket_in_gcs(storage_client)
         transfer_client.bq_to_gs(table, tmp_bucket.name, separator=separator, print_header=print_header)
 
-        # Download all blobs in temporary bucket to local and return a list of local filenames.
+        # Get iterator object for all blobs in the tmp bucket that were transferred
         logs.client.logger.info('Getting the list of available blobs in gs://{}'.format(tmp_bucket.name))
         blobs = storage_client.list_blobs(tmp_bucket.name)
 
