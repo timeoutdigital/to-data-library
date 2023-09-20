@@ -8,18 +8,6 @@ from google.cloud import bigquery, storage
 from tests.setup import setup
 from to_data_library.data import transfer
 
-# def setUpModule():
-#     setup.create_bq_table()
-#     setup.create_bucket()
-#     setup.upload_s3_files()
-
-
-# def tearDownModule():
-#     setup.delete_bq_dataset()
-#     setup.delete_bucket()
-#     setup.cleanup()
-#     setup.remove_s3_files()
-
 
 class TestTransfer(unittest.TestCase):
 
