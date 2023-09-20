@@ -289,12 +289,9 @@ class Client:
                                  aws_access_key_id=parsed_connection['access_key'],
                                  aws_secret_access_key=parsed_connection['secret_key'])
 
-        s3_files = []
-        paginator = s3_client.get_paginator('list_objects_v2')
-        pages = paginator.paginate(Bucket='s3_bucket_name', Prefix='s3_object_name')
-        for page in pages:
-            for obj in page['Contents']:
-                s3_files.append(obj.get('key'))
+        s3_files = self._get_keys_in_s3_bucket(s3_client,
+                                               bucket_name='s3_bucket_name',
+                                               prefix_name='s3_object_name')
 
         logs.client.logger.info(f'Found {str(s3_files)} files in S3')
 
@@ -307,6 +304,25 @@ class Client:
                 if len(s3_files) == 1 else s3_file
             gs_client.upload(os.path.basename(s3_file),
                              gs_bucket_name, gs_file_name)
+
+    def _get_keys_in_s3_bucket(self, s3_client, bucket_name, prefix_name):
+        """Generate a list of keys for objects in an s3 bucket.
+
+        Args:
+            s3_client (Client): S3 client object
+            bucket_name (str): Name of S3 bucket
+            prefix_name (str): Prefix to search bucket for keys
+
+        Returns:
+            list: List of keys in that bucket that match the desired prefix
+        """
+        s3_files = []
+        paginator = s3_client.get_paginator('list_objects_v2')
+        pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix_name)
+        for page in pages:
+            for obj in page['Contents']:
+                s3_files.append(obj.get('key'))
+        return s3_files
 
     def s3_to_bq(self, s3_connection_string, bucket_name, object_name,
                  bq_table, write_preference, auto_detect=True, separator=',',
