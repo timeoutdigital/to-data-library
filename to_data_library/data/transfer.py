@@ -307,6 +307,7 @@ class Client:
 
     def _get_keys_in_s3_bucket(self, s3_client, bucket_name, prefix_name):
         """Generate a list of keys for objects in an s3 bucket.
+        Paginates the list_objects_v2 method to overcome 1000 key limit.
 
         Args:
             s3_client (Client): S3 client object
