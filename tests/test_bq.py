@@ -1,7 +1,7 @@
 import csv
 import unittest
 import unittest.mock
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from google.cloud import bigquery
 
@@ -40,7 +40,15 @@ class TestBQ(unittest.TestCase):
     @patch('to_data_library.data.transfer.Client')
     def test_download_table(self, mock_transfer, mock_bigquery, mock_storage):
         mock_storage_client = mock_storage.return_value
-        # mock_transfer_client = mock_transfer.return_value
+        mock_transfer_client = mock_transfer.return_value
+        mock_bucket = Mock()
+        mock_storage_client.create_bucket.return_value = mock_bucket
+        mock_bucket.name = 'random_uuid'
+        mock_bucket = Mock()
+        mock_bucket.name.return_value = 'tmp'
+        mock_storage_client.bucket.return_value = mock_bucket
+        mock_blob = Mock()
+        mock_bucket.blob.return_value = mock_blob
 
         bq_client = bq.Client(project=self.setup.project)
         bq_client.download_table(
@@ -48,8 +56,11 @@ class TestBQ(unittest.TestCase):
         )
 
         mock_storage.assert_called_once_with(project=self.setup.project)
-        mock_storage_client.list_blobs.assert_called_once()
-        # mock_transfer_client.bq_to_gs.assert_called_with()
+        mock_storage_client.list_blobs.assert_called_once_with('random_uuid')
+        mock_transfer_client.bq_to_gs.assert_called_once_with('fake_project.fake_data_set_id.fake_table_id',
+                                                              'random_uuid',
+                                                              separator=',',
+                                                              print_header=True)
 
     def test_upload_table(self):
         # test upload BQ table
