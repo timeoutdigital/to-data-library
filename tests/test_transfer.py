@@ -2,6 +2,8 @@ import unittest
 import unittest.mock
 from unittest.mock import ANY, Mock, patch
 
+import parse
+
 from tests.setup import setup
 from to_data_library.data import transfer
 
@@ -68,5 +70,15 @@ class TestTransfer(unittest.TestCase):
 
         mock_s3_resource.assert_called_with(service_name='s3', region_name='fake_s3_region')
 
-    def test_get_keys_in_s3_bucket(self):
-        pass
+    @patch('boto3.client')
+    def test_get_keys_in_s3_bucket(self, mock_boto):
+        parsed_connection = parse.parse(
+            '{region}:{access_key}:{secret_key}', "{}:{}:{}".format('fake_s3_region', 'fake_s3_access_key',
+                                                                    'fake_s3_secret_key'))
+        client = transfer.Client(project=setup.project)
+        client._get_keys_in_s3_bucket(parsed_connection, 'fake_bucket_name', 'fake_prefix_name')
+
+        mock_boto.assert_called_with('s3',
+                                     region_name='fake_s3_region',
+                                     aws_access_key_id='fake_s3_access_key',
+                                     aws_secret_access_key='fake_s3_secret_key')

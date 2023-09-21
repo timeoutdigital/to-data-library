@@ -286,12 +286,8 @@ class Client:
 
         # Retrieve the file(s) from S3 matching to the object
         logs.client.logger.info('Finding files in S3 bucket')
-        s3_client_boto = boto3.client('s3',
-                                      region_name=parsed_connection['region'],
-                                      aws_access_key_id=parsed_connection['access_key'],
-                                      aws_secret_access_key=parsed_connection['secret_key'])
 
-        s3_files = self._get_keys_in_s3_bucket(s3_client_boto,
+        s3_files = self._get_keys_in_s3_bucket(parsed_connection=parsed_connection,
                                                bucket_name=s3_bucket_name,
                                                prefix_name=s3_object_name)
 
@@ -308,20 +304,24 @@ class Client:
             gs_client.upload(os.path.basename(s3_file),
                              gs_bucket_name, gs_file_name)
 
-    def _get_keys_in_s3_bucket(self, s3_client, bucket_name, prefix_name):
+    def _get_keys_in_s3_bucket(self, parsed_connection, bucket_name, prefix_name):
         """Generate a list of keys for objects in an s3 bucket.
         Paginates the list_objects_v2 method to overcome 1000 key limit.
 
         Args:
-            s3_client (Client): S3 client object
+            parsed_connection (parse.Result): Parsed connection_string
             bucket_name (str): Name of S3 bucket
             prefix_name (str): Prefix to search bucket for keys
 
         Returns:
             list: List of keys in that bucket that match the desired prefix
         """
+        s3_client_boto = boto3.client('s3',
+                                      region_name=parsed_connection['region'],
+                                      aws_access_key_id=parsed_connection['access_key'],
+                                      aws_secret_access_key=parsed_connection['secret_key'])
         s3_files = []
-        paginator = s3_client.get_paginator('list_objects_v2')
+        paginator = s3_client_boto.get_paginator('list_objects_v2')
         pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix_name)
         for page in pages:
             for obj in page['Contents']:
