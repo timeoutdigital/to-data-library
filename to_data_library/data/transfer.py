@@ -103,6 +103,7 @@ class Client:
         project, dataset_id, table_id = table.split('.')
         dataset_ref = bigquery.DatasetReference(
             project=project, dataset_id=dataset_id)
+        table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
 
         job_config = bigquery.LoadJobConfig(
             source_format=bigquery.SourceFormat.CSV,
@@ -118,8 +119,6 @@ class Client:
             job_config.time_partitioning = bigquery.TimePartitioning(
                 type_=bigquery.TimePartitioningType.DAY)
             table_id += '${}'.format(partition_date)
-
-        table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
 
         bq_client = bq.Client(project)
         try:

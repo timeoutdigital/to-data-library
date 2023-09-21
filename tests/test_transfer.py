@@ -1,16 +1,12 @@
-import csv
 import unittest
 import unittest.mock
-from unittest.mock import Mock, patch
-
-from google.cloud import bigquery, storage
+from unittest.mock import ANY, Mock, patch
 
 from tests.setup import setup
 from to_data_library.data import transfer
 
 
 class TestTransfer(unittest.TestCase):
-
     @patch('google.cloud.bigquery.Client')
     @patch('google.cloud.storage.Client')
     def test_bq_to_gs(self, mock_storage, mock_bigquery):
@@ -30,56 +26,33 @@ class TestTransfer(unittest.TestCase):
 
         mock_storage_client.list_blobs.assert_called_once_with('fake_bucket_name')
 
-    def test_gs_to_bq(self):
+    @patch('google.cloud.bigquery.DatasetReference')
+    @patch('google.cloud.bigquery.TableReference')
+    @patch('google.cloud.bigquery.Client')
+    @patch('google.cloud.bigquery.LoadJobConfig')
+    def test_gs_to_bq(self, mock_loadjobconfig, mock_bigqueryclient, mock_tablereference, mock_datasetrefererence):
 
-        client = transfer.Client(project=self.setup.project)
+        client = transfer.Client('fake_project_name')
         client.gs_to_bq(
-            gs_uris="gs://{}/{}".format(self.setup.bucket_name, 'sample.csv'),
-            table='{}.{}.{}'.format(self.setup.project, self.setup.dataset_id, 'actors_from_gs'),
-            write_preference='truncate'
+            gs_uris="gs://{}/{}".format('fake_bucket_name', 'sample.csv'),
+            table='{}.{}.{}'.format('fake_project_name', 'fake_dataset_id', 'fake_table_id'),
+            write_preference='truncate',
+            max_bad_records=10
         )
 
-        # creating list based on source bucket file values
-        storage_client = storage.Client(project=self.setup.project)
-        with open('actors_from_gs.csv', 'wb') as file_obj:
-            storage_client.download_blob_to_file(
-                blob_or_uri="gs://{}/{}".format(self.setup.bucket_name, 'sample.csv'),
-                file_obj=file_obj
-            )
-        with open('actors_from_gs.csv', newline='') as csvfile:
-            reader = csv.reader(csvfile)
-            storage_keys = []
-            for row in reader:
-                storage_keys.append(
-                    "{}{}{}".format(
-                        row[0],
-                        "NULL" if row[1] else row[1],
-                        "NULL" if row[2] else row[2],
-                    )
-                )
-
-        # creating list based on destination big query table values
-        bq_keys = []
-        bigquery_client = bigquery.Client(project=self.setup.project)
-        job = bigquery_client.query(
-            'SELECT profile_id, first_name, last_name from {}.{}'.format(
-                self.setup.dataset_id,
-                'actors_from_gs'
-            )
-        )
-        for row in job.result():
-            bq_keys.append('{}{}{}'.format(
-                row.profile_id,
-                'NULL' if row.first_name is None else row.first_name,
-                'NULL' if row.last_name is None else row.last_name,
-            ))
+        mock_datasetrefererence.assert_called_with(project='fake_project_name', dataset_id='fake_dataset_id')
+        mock_tablereference.assert_called_with(ANY, table_id='fake_table_id')
+        mock_loadjobconfig.assert_called_with(source_format='CSV',
+                                              skip_leading_rows=1,
+                                              autodetect=True,
+                                              field_delimiter=',',
+                                              write_disposition='WRITE_TRUNCATE',
+                                              allow_quoted_newlines=True,
+                                              max_bad_records=10)
 
     @patch('boto3.client')
     @patch('boto3.resource')
     def test_s3_to_gs(self, mock_s3_resource, mock_s3_boto):
-        # mock_boto_client = mock_s3_boto.return_value
-        # mock_resource_client = mock_s3_resource.return_value
-
         client = transfer.Client(project=setup.project)
         client.s3_to_gs(s3_connection_string="{}:{}:{}".format('fake_s3_region', 'fake_s3_access_key',
                                                                'fake_s3_secret_key'),
