@@ -309,7 +309,7 @@ class Client:
         Paginates the list_objects_v2 method to overcome 1000 key limit.
 
         Args:
-            parsed_connection (parse.Result): Parsed connection_string
+            parsed_connection (parse.Result): Parsed connection_string object
             bucket_name (str): Name of S3 bucket
             prefix_name (str): Prefix to search bucket for keys
 
