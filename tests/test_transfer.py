@@ -76,7 +76,10 @@ class TestTransfer(unittest.TestCase):
 
     @patch('boto3.client')
     @patch('boto3.resource')
-    def test_s3_to_gs(self, mock_resource, mock_parse, mock_boto):
+    def test_s3_to_gs(self, mock_s3_resource, mock_s3_boto):
+        # mock_boto_client = mock_s3_boto.return_value
+        # mock_resource_client = mock_s3_resource.return_value
+
         client = transfer.Client(project=setup.project)
         client.s3_to_gs(s3_connection_string="{}:{}:{}".format('fake_s3_region', 'fake_s3_access_key',
                                                                'fake_s3_secret_key'),
@@ -85,9 +88,12 @@ class TestTransfer(unittest.TestCase):
                         gs_bucket_name='fake_gs_bucket_name',
                         gs_file_name='transfer_s3_to_gs.csv')
 
-        # gs_client = storage.Client()
-        # bucket = gs_client.bucket(setup.bucket_name)
-        # self.assertTrue(storage.Blob(name='transfer_s3_to_gs.csv', bucket=bucket).exists(gs_client))
+        mock_s3_boto.assert_called_with('s3',
+                                        region_name='fake_s3_region',
+                                        aws_access_key_id='fake_s3_access_key',
+                                        aws_secret_access_key='fake_s3_secret_key')
+
+        mock_s3_resource.assert_called_with(service_name='s3', region_name='fake_s3_region')
 
     def test_get_keys_in_s3_bucket(self):
         pass

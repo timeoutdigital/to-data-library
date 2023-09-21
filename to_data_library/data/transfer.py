@@ -248,11 +248,14 @@ class Client:
             >>>                 s3_bucket='bucket_name')
         """
 
+        parsed_connection = parse.parse(
+            '{region}:{access_key}:{secret_key}', s3_connection_string)
+
         local_file = os.path.basename(gs_uri)
         gs_client = gs.Client(self.project)
         gs_client.download(gs_uri, local_file)
 
-        s3_client = s3.Client(s3_connection_string)
+        s3_client = s3.Client(parsed_connection['region'])
         s3_client.upload(local_file,
                          s3_bucket)
 
@@ -296,7 +299,7 @@ class Client:
         logs.client.logger.info(f'Found {str(s3_files)} files in S3')
 
         # For every key found in s3, download to local and then upload to desired GS bucket.
-        s3_client = s3.Client(s3_connection_string)
+        s3_client = s3.Client(parsed_connection['region'])
         gs_client = gs.Client(self.project)
         for s3_file in s3_files:
             s3_client.download(s3_bucket_name, s3_file)
@@ -364,7 +367,9 @@ class Client:
         """
 
         # Download S3 file to local
-        s3_client = s3.Client(s3_connection_string)
+        parsed_connection = parse.parse(
+            '{region}:{access_key}:{secret_key}', s3_connection_string)
+        s3_client = s3.Client(parsed_connection['region'])
         s3_client.download(bucket_name, object_name,
                            os.path.join('/tmp/', object_name))
 
