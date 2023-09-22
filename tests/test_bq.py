@@ -120,8 +120,25 @@ class TestBQ(unittest.TestCase):
                     expected_table_id = "test"
                     bq_mock.TableReference.assert_called_with(unittest.mock.ANY, table_id=expected_table_id)
 
-    def test_run_query(self):
-        pass
+    @unittest.expectedFailure
+    def test_run_no_query(self):
+        bq_client = bq.Client(project='fake_project')
+        bq_client.run_query(
+        )
+
+    @patch('google.cloud.bigquery.QueryJobConfig')
+    @patch('google.cloud.bigquery.Client.query')
+    def test_run_query(self, mock_queryjob, mock_queryjobconfig):
+        mocked_job_config = mock_queryjobconfig.return_value
+
+        bq_client = bq.Client(project='fake_project')
+        bq_client.run_query(
+            query='SELECT * FROM {}.{} where profile_id={{{{id}}}}'.format('fake_dataset_id', 'fake_table_id'),
+            params={'id': 1}
+        )
+        mock_queryjobconfig.assert_called_with(allow_large_results=True)
+        mock_queryjob.assert_called_with('SELECT * FROM fake_dataset_id.fake_table_id where profile_id=1',
+                                         job_config=mocked_job_config)
 
     @unittest.expectedFailure
     def test_create_table_with_no_schema(self):
