@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 from google.cloud import bigquery
 
-from tests.setup import setup
+# from tests.setup import setup
 from to_data_library.data import bq
 
 # def setUpModule():
@@ -21,9 +21,9 @@ from to_data_library.data import bq
 
 class TestBQ(unittest.TestCase):
 
-    def __init__(self, *args, **kwargs):
-        super(TestBQ, self).__init__(*args, **kwargs)
-        self.setup = setup
+    # def __init__(self, *args, **kwargs):
+    #     super(TestBQ, self).__init__(*args, **kwargs)
+    #     self.setup = setup
 
     @patch('google.cloud.storage.Client')
     @patch('google.cloud.bigquery.Client')
@@ -174,21 +174,29 @@ class TestBQ(unittest.TestCase):
 
         self.assertEqual(keys, bq_keys)
 
-    def test_create_table_with_schema_fields(self):
-        # test create table with schema fields
-
-        bq_client = bq.Client(project=self.setup.project)
+    @unittest.expectedFailure
+    def test_create_table_with_no_schema(self):
+        bq_client = bq.Client('fake_project_name')
         bq_client.create_table(
-            table='{}.{}.{}'.format(self.setup.project, self.setup.dataset_id, 'venue'),
-            schema_fields=(('venue_id', 'STRING', 'REQUIRED'), ('name', 'STRING', 'REQUIRED'))
+            table='{}.{}.{}'.format('fake_project_id', 'fake_dataset_id', 'fake_table_id')
         )
 
-        bigquery_client = bigquery.Client(project=self.setup.project)
-        table_ref = bigquery_client.get_table('{}.{}.{}'.format(self.setup.project, self.setup.dataset_id, 'venue'))
-        self.assertEqual(table_ref.schema, [
-            bigquery.SchemaField("venue_id", "STRING", mode="REQUIRED"),
-            bigquery.SchemaField("name", "STRING", mode="REQUIRED")
-        ])
+    @patch('google.cloud.bigquery.Client')
+    @patch('google.cloud.bigquery.Table')
+    def test_create_table_with_schema_fields(self, mock_bq_table, mock_bigquery):
+        bq_client = bq.Client(project='fake_project')
+        bq_client.create_table(
+            table='{}.{}.{}'.format('fake_project', 'fake_dataset_id', 'venue'),
+            schema_fields=(('venue_id', 'STRING', 'REQUIRED'), ('name', 'STRING', 'REQUIRED'))
+        )
+        mock_bq_table.assert_called_with('fake_project.fake_dataset_id.venue',
+                                         schema=[bigquery.SchemaField('venue_id', 'STRING', 'REQUIRED', None,
+                                                                      None, (), None),
+                                                 bigquery.SchemaField('name', 'STRING', 'REQUIRED', None,
+                                                                      None, (), None)])
+        mock_bq_table_instance = mock_bq_table.return_value
+
+        mock_bigquery.return_value.create_table.assert_called_with(mock_bq_table_instance)
 
     def test_create_table_with_schema_file_name(self):
         # test create table from schema file
