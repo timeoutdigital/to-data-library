@@ -198,20 +198,22 @@ class TestBQ(unittest.TestCase):
 
         mock_bigquery.return_value.create_table.assert_called_with(mock_bq_table_instance)
 
-    def test_create_table_with_schema_file_name(self):
-        # test create table from schema file
-
-        bq_client = bq.Client(project=self.setup.project)
+    @patch('google.cloud.bigquery.Client')
+    @patch('google.cloud.bigquery.Table')
+    def test_create_table_with_schema_file_name(self, mock_bq_table, mock_bigquery):
+        bq_client = bq.Client(project='fake_project')
         bq_client.create_table(
-            table='{}.{}.{}'.format(self.setup.project, self.setup.dataset_id, 'venue2'),
+            table='{}.{}.{}'.format('fake_project', 'fake_dataset_id', 'venue2'),
             schema_file_name='tests/data/schema.csv'
         )
 
-        bigquery_client = bigquery.Client(project=self.setup.project)
-        table_ref = bigquery_client.get_table('{}.{}.{}'.format(self.setup.project, self.setup.dataset_id, 'venue2'))
-        self.assertEqual(table_ref.schema, [
-            bigquery.SchemaField("venue_id", "STRING", mode="REQUIRED"),
-            bigquery.SchemaField("name", "STRING", mode="REQUIRED"),
-            bigquery.SchemaField("address", "STRING", mode="REQUIRED")
+        mock_bq_table.assert_called_with('fake_project.fake_dataset_id.venue2',
+                                         schema=[bigquery.SchemaField('venue_id', 'STRING', 'REQUIRED', None,
+                                                                      None, (), None),
+                                                 bigquery.SchemaField('name', 'STRING', 'REQUIRED', None,
+                                                                      None, (), None),
+                                                 bigquery.SchemaField('address', 'STRING', 'REQUIRED', None,
+                                                                      None, (), None)])
+        mock_bq_table_instance = mock_bq_table.return_value
 
-        ])
+        mock_bigquery.return_value.create_table.assert_called_with(mock_bq_table_instance)
