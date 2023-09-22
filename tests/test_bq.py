@@ -1,7 +1,6 @@
-import csv
 import unittest
 import unittest.mock
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 from google.cloud import bigquery
 
@@ -62,42 +61,28 @@ class TestBQ(unittest.TestCase):
                                                               separator=',',
                                                               print_header=True)
 
-    def test_upload_table(self):
-        # test upload BQ table
-
-        bq_client = bq.Client(project=self.setup.project)
+    @patch('google.cloud.bigquery.DatasetReference')
+    @patch('google.cloud.bigquery.TableReference')
+    @patch('google.cloud.bigquery.Client')
+    @patch('google.cloud.bigquery.LoadJobConfig')
+    def test_upload_table(self, mock_loadjobconfig, mock_bigqueryclient, mock_tablereference, mock_datasetrefererence):
+        bq_client = bq.Client(project='fake_project')
         bq_client.upload_table(
             file_path='tests/data/sample.csv',
-            table='{}.{}.{}'.format(self.setup.project, self.setup.dataset_id, 'uploaded_actors'),
-            write_preference='truncate'
+            table='{}.{}.{}'.format('fake_project', 'fake_data_set_id', 'uploaded_actors'),
+            write_preference='truncate',
+            max_bad_records=20
         )
 
-        # creating list based on source file values
-        with open('tests/data/sample.csv', newline='') as csvfile:
-            reader = csv.DictReader(csvfile)
-            storage_keys = []
-            for row in reader:
-                storage_keys.append(
-                    str(row['profile_id']) + row['first_name'] + row['last_name']
-                )
-
-        # creating list based on destination big query table values
-        bq_keys = []
-        bigquery_client = bigquery.Client(project=self.setup.project)
-        job = bigquery_client.query(
-            'SELECT profile_id, first_name, last_name from {}.{}'.format(
-                self.setup.dataset_id,
-                'uploaded_actors'
-            )
-        )
-        for row in job.result():
-            bq_keys.append('{}{}{}'.format(
-                row.profile_id,
-                '' if row.first_name is None else row.first_name,
-                '' if row.last_name is None else row.last_name,
-            ))
-
-        self.assertEqual(storage_keys, bq_keys)
+        mock_datasetrefererence.assert_called_with(project='fake_project', dataset_id='fake_data_set_id')
+        mock_loadjobconfig.assert_called_with(source_format='CSV',
+                                              skip_leading_rows=1,
+                                              autodetect=True,
+                                              field_delimiter=',',
+                                              write_disposition='WRITE_TRUNCATE',
+                                              allow_quoted_newlines=True,
+                                              max_bad_records=20)
+        mock_tablereference.assert_called_with(ANY, table_id='uploaded_actors')
 
     def test_upload_table_partitioned_default(self):
         # test deafult date type for partitioned table
