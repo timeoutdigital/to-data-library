@@ -66,6 +66,8 @@ class TestBQ(unittest.TestCase):
     @patch('google.cloud.bigquery.Client')
     @patch('google.cloud.bigquery.LoadJobConfig')
     def test_upload_table(self, mock_loadjobconfig, mock_bigqueryclient, mock_tablereference, mock_datasetrefererence):
+        job_config = mock_loadjobconfig.return_value
+
         bq_client = bq.Client(project='fake_project')
         bq_client.upload_table(
             file_path='tests/data/sample.csv',
@@ -83,6 +85,18 @@ class TestBQ(unittest.TestCase):
                                               allow_quoted_newlines=True,
                                               max_bad_records=20)
         mock_tablereference.assert_called_with(ANY, table_id='uploaded_actors')
+
+        # Check that schema is passed if provided to method
+        bq_client.upload_table(
+            file_path='tests/data/sample.csv',
+            table='{}.{}.{}'.format('fake_project', 'fake_data_set_id', 'uploaded_actors'),
+            write_preference='truncate',
+            max_bad_records=20,
+            schema=(('first_field', 'STRING'), ('second_field', 'STRING'))
+        )
+        self.assertEqual(job_config.schema,
+                         [bigquery.SchemaField('first_field', 'STRING', 'NULLABLE', None, None, (), None),
+                          bigquery.SchemaField('second_field', 'STRING', 'NULLABLE', None, None, (), None)])
 
     def test_upload_table_partitioned_default(self):
         # test deafult date type for partitioned table
