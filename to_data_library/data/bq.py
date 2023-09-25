@@ -210,7 +210,6 @@ class Client:
         query_job = self.bigquery_client.query(query, job_config=job_config)
         result = query_job.result()
         logs.client.logger.info(
-            # 'Total bytes processed: {} GiB'.format(query_job.total_bytes_processed / (1024 * 1024 * 1024))
             'Total bytes processed: {:.2f} GiB'.format(query_job.total_bytes_processed / (1024 * 1024 * 1024))
         )
 
