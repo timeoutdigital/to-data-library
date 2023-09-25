@@ -34,7 +34,7 @@ class TestBQ(unittest.TestCase):
         mock_blob = Mock()
         mock_bucket.blob.return_value = mock_blob
 
-        bq_client = bq.Client('fake_project')
+        bq_client = bq.Client(None)
         bq_client.download_table(
             table='{}.{}.{}'.format('fake_project', 'fake_data_set_id', 'fake_table_id')
         )
@@ -153,7 +153,7 @@ class TestBQ(unittest.TestCase):
     @patch('google.cloud.bigquery.Client')
     @patch('google.cloud.bigquery.Table')
     def test_create_table_with_schema_fields(self, mock_bq_table, mock_bigquery):
-        bq_client = bq.Client(project='fake_project')
+        bq_client = bq.Client(project='fake_project',)
         bq_client.create_table(
             table='{}.{}.{}'.format('fake_project', 'fake_dataset_id', 'venue'),
             schema_fields=(('venue_id', 'STRING', 'REQUIRED'), ('name', 'STRING', 'REQUIRED'))
