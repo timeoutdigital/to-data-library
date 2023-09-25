@@ -4,7 +4,6 @@ from unittest.mock import ANY, Mock, patch
 
 from google.cloud import bigquery
 
-# from tests.setup import setup
 from to_data_library.data import bq
 
 
