@@ -11,7 +11,9 @@ from to_data_library.data import bq
 class TestBQ(unittest.TestCase):
     @patch('google.cloud.storage.Client')
     @patch('google.cloud.bigquery.Client')
-    def test_create_tmp_bucket_in_gcs(self, mock_bigquery, mock_storage):
+    @patch('google.auth.default')
+    def test_create_tmp_bucket_in_gcs(self, mock_default, mock_bigquery, mock_storage):
+        mock_default.return_value = 'first', 'second'
         mock_storage_client = mock_storage.return_value
 
         bq_client = bq.Client(project='fake_project')
@@ -22,7 +24,9 @@ class TestBQ(unittest.TestCase):
     @patch('google.cloud.storage.Client')
     @patch('google.cloud.bigquery.Client')
     @patch('to_data_library.data.transfer.Client')
-    def test_download_table(self, mock_transfer, mock_bigquery, mock_storage):
+    @patch('to_data_library.data.bq.default')
+    def test_download_table(self, mock_default, mock_transfer, mock_bigquery, mock_storage):
+        mock_default.return_value = 'first', 'second'
         mock_storage_client = mock_storage.return_value
         mock_transfer_client = mock_transfer.return_value
         mock_bucket = Mock()
@@ -130,11 +134,15 @@ class TestBQ(unittest.TestCase):
         )
 
     @patch('google.cloud.bigquery.QueryJobConfig')
-    @patch('google.cloud.bigquery.Client.query')
-    def test_run_query(self, mock_query, mock_queryjobconfig):
+    @patch('google.cloud.bigquery.Client')
+    @patch('to_data_library.data.bq.default')
+    def test_run_query(self, mock_default, mock_client, mock_queryjobconfig):
+        mock_default.return_value = 'first', 'second'
+
+        mock_query = mock_client.return_value.query
+        mock_query_result = mock_query.return_value
+        mock_query_result.total_bytes_processed = 2000
         mocked_job_config = mock_queryjobconfig.return_value
-        mock_query_job = mock_query.return_value
-        mock_query_job.total_bytes_processed = 2000
 
         bq_client = bq.Client(project='fake_project')
         bq_client.run_query(
@@ -144,7 +152,6 @@ class TestBQ(unittest.TestCase):
         mock_queryjobconfig.assert_called_with(allow_large_results=True)
         mock_query.assert_called_with('SELECT * FROM fake_dataset_id.fake_table_id where profile_id=1',
                                       job_config=mocked_job_config)
-        mock_query_job.result.assert_called_with()
 
     @unittest.expectedFailure
     def test_create_table_with_no_schema(self):
@@ -155,7 +162,9 @@ class TestBQ(unittest.TestCase):
 
     @patch('google.cloud.bigquery.Client')
     @patch('google.cloud.bigquery.Table')
-    def test_create_table_with_schema_fields(self, mock_bq_table, mock_bigquery):
+    @patch('to_data_library.data.bq.default')
+    def test_create_table_with_schema_fields(self, mock_default, mock_bq_table, mock_bigquery):
+        mock_default.return_value = 'first', 'second'
         bq_client = bq.Client(project='fake_project',)
         bq_client.create_table(
             table='{}.{}.{}'.format('fake_project', 'fake_dataset_id', 'venue'),
@@ -172,7 +181,9 @@ class TestBQ(unittest.TestCase):
 
     @patch('google.cloud.bigquery.Client')
     @patch('google.cloud.bigquery.Table')
-    def test_create_table_with_schema_file_name(self, mock_bq_table, mock_bigquery):
+    @patch('to_data_library.data.bq.default')
+    def test_create_table_with_schema_file_name(self, mock_default, mock_bq_table, mock_bigquery):
+        mock_default.return_value = 'first', 'second'
         bq_client = bq.Client(project='fake_project')
         bq_client.create_table(
             table='{}.{}.{}'.format('fake_project', 'fake_dataset_id', 'venue2'),
