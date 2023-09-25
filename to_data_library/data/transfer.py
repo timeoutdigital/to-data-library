@@ -61,7 +61,6 @@ class Client:
             )
         )
         extract_job.result()
-
         storage_client = storage.Client(project=self.project)
         logs.client.logger.info(
             'Getting the list of available blobs in gs://{}'.format(bucket_name))
@@ -104,6 +103,7 @@ class Client:
         project, dataset_id, table_id = table.split('.')
         dataset_ref = bigquery.DatasetReference(
             project=project, dataset_id=dataset_id)
+        table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
 
         job_config = bigquery.LoadJobConfig(
             source_format=bigquery.SourceFormat.CSV,
@@ -119,8 +119,6 @@ class Client:
             job_config.time_partitioning = bigquery.TimePartitioning(
                 type_=bigquery.TimePartitioningType.DAY)
             table_id += '${}'.format(partition_date)
-
-        table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
 
         bq_client = bq.Client(project)
         try:
@@ -249,11 +247,14 @@ class Client:
             >>>                 s3_bucket='bucket_name')
         """
 
+        parsed_connection = parse.parse(
+            '{region}:{access_key}:{secret_key}', s3_connection_string)
+
         local_file = os.path.basename(gs_uri)
         gs_client = gs.Client(self.project)
         gs_client.download(gs_uri, local_file)
 
-        s3_client = s3.Client(s3_connection_string)
+        s3_client = s3.Client(parsed_connection['region'])
         s3_client.upload(local_file,
                          s3_bucket)
 
@@ -285,18 +286,15 @@ class Client:
 
         # Retrieve the file(s) from S3 matching to the object
         logs.client.logger.info('Finding files in S3 bucket')
-        s3_client = boto3.client('s3',
-                                 region_name=parsed_connection['region'],
-                                 aws_access_key_id=parsed_connection['access_key'],
-                                 aws_secret_access_key=parsed_connection['secret_key'])
-        response = s3_client.list_objects_v2(
-            Bucket=s3_bucket_name, Prefix=s3_object_name)
-        s3_files = []
-        for content in response.get('Contents', []):
-            s3_files.append(content.get('Key'))
+
+        s3_files = self._get_keys_in_s3_bucket(parsed_connection=parsed_connection,
+                                               bucket_name=s3_bucket_name,
+                                               prefix_name=s3_object_name)
+
         logs.client.logger.info(f'Found {str(s3_files)} files in S3')
 
-        s3_client = s3.Client(s3_connection_string)
+        # For every key found in s3, download to local and then upload to desired GS bucket.
+        s3_client = s3.Client(parsed_connection['region'])
         gs_client = gs.Client(self.project)
         for s3_file in s3_files:
             s3_client.download(s3_bucket_name, s3_file)
@@ -305,6 +303,30 @@ class Client:
                 if len(s3_files) == 1 else s3_file
             gs_client.upload(os.path.basename(s3_file),
                              gs_bucket_name, gs_file_name)
+
+    def _get_keys_in_s3_bucket(self, parsed_connection, bucket_name, prefix_name):
+        """Generate a list of keys for objects in an s3 bucket.
+        Paginates the list_objects_v2 method to overcome 1000 key limit.
+
+        Args:
+            parsed_connection (parse.Result): Parsed connection_string object
+            bucket_name (str): Name of S3 bucket
+            prefix_name (str): Prefix to search bucket for keys
+
+        Returns:
+            list: List of keys in that bucket that match the desired prefix
+        """
+        s3_client_boto = boto3.client('s3',
+                                      region_name=parsed_connection['region'],
+                                      aws_access_key_id=parsed_connection['access_key'],
+                                      aws_secret_access_key=parsed_connection['secret_key'])
+        s3_files = []
+        paginator = s3_client_boto.get_paginator('list_objects_v2')
+        pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix_name)
+        for page in pages:
+            for obj in page['Contents']:
+                s3_files.append(obj.get('key'))
+        return s3_files
 
     def s3_to_bq(self, s3_connection_string, bucket_name, object_name,
                  bq_table, write_preference, auto_detect=True, separator=',',
@@ -344,7 +366,9 @@ class Client:
         """
 
         # Download S3 file to local
-        s3_client = s3.Client(s3_connection_string)
+        parsed_connection = parse.parse(
+            '{region}:{access_key}:{secret_key}', s3_connection_string)
+        s3_client = s3.Client(parsed_connection['region'])
         s3_client.download(bucket_name, object_name,
                            os.path.join('/tmp/', object_name))
 

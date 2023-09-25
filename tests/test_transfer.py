@@ -1,124 +1,89 @@
-import csv
 import unittest
+import unittest.mock
+from unittest.mock import ANY, Mock, patch
 
-from google.cloud import bigquery, storage
+import parse
 
 from tests.setup import setup
 from to_data_library.data import transfer
 
 
-def setUpModule():
-    setup.create_bq_table()
-    setup.create_bucket()
-    setup.upload_s3_files()
-
-
-def tearDownModule():
-    setup.delete_bq_dataset()
-    setup.delete_bucket()
-    setup.cleanup()
-    setup.remove_s3_files()
-
-
 class TestTransfer(unittest.TestCase):
+    @patch('google.cloud.bigquery.Client')
+    @patch('google.cloud.storage.Client')
+    def test_bq_to_gs(self, mock_storage, mock_bigquery):
+        mock_bigquery_client = mock_bigquery.return_value
+        mock_extract_job = Mock()
+        mock_bigquery_client.extract_table.return_value = mock_extract_job
+        mock_extract_job.result.return_value = ''
 
-    def __init__(self, *args, **kwargs):
-        super(TestTransfer, self).__init__(*args, **kwargs)
-        self.setup = setup
+        mock_storage_client = mock_storage.return_value
 
-    def test_bq_to_gs(self):
+        client = transfer.Client(project='fake_project')
 
-        client = transfer.Client(project=self.setup.project)
-        file_names = client.bq_to_gs(
-            table='{}.{}.{}'.format(self.setup.project, self.setup.dataset_id, 'actors'),
-            bucket_name=self.setup.bucket_name,
+        client.bq_to_gs(
+            table='{}.{}.{}'.format('fake_project', 'fake_dataset_id', 'fake_table_id'),
+            bucket_name='fake_bucket_name',
         )
 
-        # creating list based on source big query table values
-        bq_keys = []
-        bigquery_client = bigquery.Client(project=self.setup.project)
-        job = bigquery_client.query(
-            'SELECT profile_id, first_name, last_name from {}.{}'.format(
-                self.setup.dataset_id,
-                'actors'
-            )
-        )
-        for row in job.result():
-            bq_keys.append('{}{}{}'.format(
-                row.profile_id,
-                '' if row.first_name is None else row.first_name,
-                '' if row.last_name is None else row.last_name,
-            ))
+        mock_storage_client.list_blobs.assert_called_once_with('fake_bucket_name')
 
-        # creating list based on destination bucket file values
-        storage_client = storage.Client(project=self.setup.project)
-        with open('actors.csv', 'wb') as file_obj:
-            storage_client.download_blob_to_file(blob_or_uri=file_names[0], file_obj=file_obj)
-
-        with open('actors.csv', newline='') as csvfile:
-            reader = csv.DictReader(csvfile)
-            storage_keys = []
-            for row in reader:
-                storage_keys.append(
-                    str(row['profile_id']) + row['first_name'] + row['last_name']
-                )
-
-        self.assertEqual(storage_keys, bq_keys)
-
-    def test_gs_to_bq(self):
-
-        client = transfer.Client(project=self.setup.project)
+    @patch('google.cloud.bigquery.DatasetReference')
+    @patch('google.cloud.bigquery.TableReference')
+    @patch('google.cloud.bigquery.Client')
+    @patch('google.cloud.bigquery.LoadJobConfig')
+    @patch('to_data_library.data.bq.default')
+    def test_gs_to_bq(self, mock_default, mock_loadjobconfig,
+                      mock_bigqueryclient, mock_tablereference, mock_datasetrefererence):
+        mock_default.return_value = 'first', 'second'
+        client = transfer.Client('fake_project_name')
         client.gs_to_bq(
-            gs_uris="gs://{}/{}".format(self.setup.bucket_name, 'sample.csv'),
-            table='{}.{}.{}'.format(self.setup.project, self.setup.dataset_id, 'actors_from_gs'),
-            write_preference='truncate'
+            gs_uris="gs://{}/{}".format('fake_bucket_name', 'sample.csv'),
+            table='{}.{}.{}'.format('fake_project_name', 'fake_dataset_id', 'fake_table_id'),
+            write_preference='truncate',
+            max_bad_records=10
         )
 
-        # creating list based on source bucket file values
-        storage_client = storage.Client(project=self.setup.project)
-        with open('actors_from_gs.csv', 'wb') as file_obj:
-            storage_client.download_blob_to_file(
-                blob_or_uri="gs://{}/{}".format(self.setup.bucket_name, 'sample.csv'),
-                file_obj=file_obj
-            )
-        with open('actors_from_gs.csv', newline='') as csvfile:
-            reader = csv.reader(csvfile)
-            storage_keys = []
-            for row in reader:
-                storage_keys.append(
-                    "{}{}{}".format(
-                        row[0],
-                        "NULL" if row[1] else row[1],
-                        "NULL" if row[2] else row[2],
-                    )
-                )
+        mock_datasetrefererence.assert_called_with(project='fake_project_name', dataset_id='fake_dataset_id')
+        mock_tablereference.assert_called_with(ANY, table_id='fake_table_id')
+        mock_loadjobconfig.assert_called_with(source_format='CSV',
+                                              skip_leading_rows=1,
+                                              autodetect=True,
+                                              field_delimiter=',',
+                                              write_disposition='WRITE_TRUNCATE',
+                                              allow_quoted_newlines=True,
+                                              max_bad_records=10)
 
-        # creating list based on destination big query table values
-        bq_keys = []
-        bigquery_client = bigquery.Client(project=self.setup.project)
-        job = bigquery_client.query(
-            'SELECT profile_id, first_name, last_name from {}.{}'.format(
-                self.setup.dataset_id,
-                'actors_from_gs'
-            )
-        )
-        for row in job.result():
-            bq_keys.append('{}{}{}'.format(
-                row.profile_id,
-                'NULL' if row.first_name is None else row.first_name,
-                'NULL' if row.last_name is None else row.last_name,
-            ))
-
-    def test_s3_to_gs(self):
-
+    @patch('boto3.client')
+    @patch('boto3.resource')
+    @patch('to_data_library.data.bq.default')
+    @patch('google.cloud.storage.Client')
+    def test_s3_to_gs(self, mock_storage, mock_default, mock_s3_resource, mock_s3_boto):
+        mock_default.return_value = 'first', 'second'
         client = transfer.Client(project=setup.project)
-        client.s3_to_gs(s3_connection_string="{}:{}:{}".format(setup.s3_region, setup.s3_access_key,
-                                                               setup.s3_secret_key),
-                        s3_bucket_name=setup.s3_bucket,
+        client.s3_to_gs(s3_connection_string="{}:{}:{}".format('fake_s3_region', 'fake_s3_access_key',
+                                                               'fake_s3_secret_key'),
+                        s3_bucket_name='fake_s3_bucket',
                         s3_object_name='download_sample.csv',
-                        gs_bucket_name=setup.bucket_name,
+                        gs_bucket_name='fake_gs_bucket_name',
                         gs_file_name='transfer_s3_to_gs.csv')
 
-        gs_client = storage.Client()
-        bucket = gs_client.bucket(setup.bucket_name)
-        self.assertTrue(storage.Blob(name='transfer_s3_to_gs.csv', bucket=bucket).exists(gs_client))
+        mock_s3_boto.assert_called_with('s3',
+                                        region_name='fake_s3_region',
+                                        aws_access_key_id='fake_s3_access_key',
+                                        aws_secret_access_key='fake_s3_secret_key')
+
+        mock_s3_resource.assert_called_with(service_name='s3', region_name='fake_s3_region')
+
+    @patch('boto3.client')
+    def test_get_keys_in_s3_bucket(self, mock_boto):
+        parsed_connection = parse.parse(
+            '{region}:{access_key}:{secret_key}', "{}:{}:{}".format('fake_s3_region', 'fake_s3_access_key',
+                                                                    'fake_s3_secret_key'))
+        client = transfer.Client(project=setup.project)
+        client._get_keys_in_s3_bucket(parsed_connection, 'fake_bucket_name', 'fake_prefix_name')
+
+        mock_boto.assert_called_with('s3',
+                                     region_name='fake_s3_region',
+                                     aws_access_key_id='fake_s3_access_key',
+                                     aws_secret_access_key='fake_s3_secret_key')

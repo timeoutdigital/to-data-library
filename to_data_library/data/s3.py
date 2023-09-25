@@ -28,7 +28,7 @@ class Client:
         Args:
             bucket_name (str): s3 bucket name
             object_name (str): s3 file name to download
-            local_path (str): local file name with path. If local path is a directory
+            local_path (str, Optional): local file name with path. If local path is a directory
                               object name is used as local file name
 
         Example:
