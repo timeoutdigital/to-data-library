@@ -1,7 +1,7 @@
 import csv
 import uuid
 
-# from google.auth import default
+from google.auth import default
 from google.cloud import bigquery, storage
 from jinja2 import Template
 
@@ -20,14 +20,14 @@ class Client:
     def __init__(self, project):
         self.project = project
 
-        # scopes = (
-        #     'https://www.googleapis.com/auth/bigquery',
-        #     'https://www.googleapis.com/auth/cloud-platform',
-        #     'https://www.googleapis.com/auth/drive',
-        # )
-        # credentials, _ = default(scopes=scopes)
+        scopes = (
+            'https://www.googleapis.com/auth/bigquery',
+            'https://www.googleapis.com/auth/cloud-platform',
+            'https://www.googleapis.com/auth/drive',
+        )
+        credentials, _ = default(scopes=scopes)
         self.bigquery_client = bigquery.Client(
-            # credentials=credentials,
+            credentials=credentials,
             project=self.project
         )
 
