@@ -57,7 +57,8 @@ class TestTransfer(unittest.TestCase):
     @patch('boto3.client')
     @patch('boto3.resource')
     @patch('to_data_library.data.bq.default')
-    def test_s3_to_gs(self, mock_default, mock_s3_resource, mock_s3_boto):
+    @patch('google.cloud.storage.Client')
+    def test_s3_to_gs(self, mock_storage, mock_default, mock_s3_resource, mock_s3_boto):
         mock_default.return_value = 'first', 'second'
         client = transfer.Client(project=setup.project)
         client.s3_to_gs(s3_connection_string="{}:{}:{}".format('fake_s3_region', 'fake_s3_access_key',
