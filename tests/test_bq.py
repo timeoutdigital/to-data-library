@@ -34,12 +34,12 @@ class TestBQ(unittest.TestCase):
         mock_blob = Mock()
         mock_bucket.blob.return_value = mock_blob
 
-        bq_client = bq.Client(None)
+        bq_client = bq.Client(project='fake_project')
         bq_client.download_table(
             table='{}.{}.{}'.format('fake_project', 'fake_data_set_id', 'fake_table_id')
         )
 
-        mock_storage.assert_called_once_with(project=None)
+        mock_storage.assert_called_once_with(project='fake_project')
         mock_storage_client.list_blobs.assert_called_once_with('random_uuid')
         mock_transfer_client.bq_to_gs.assert_called_once_with('fake_project.fake_data_set_id.fake_table_id',
                                                               'random_uuid',
