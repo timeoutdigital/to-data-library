@@ -50,7 +50,10 @@ class TestBQ(unittest.TestCase):
     @patch('google.cloud.bigquery.TableReference')
     @patch('google.cloud.bigquery.Client')
     @patch('google.cloud.bigquery.LoadJobConfig')
-    def test_upload_table(self, mock_loadjobconfig, mock_bigqueryclient, mock_tablereference, mock_datasetrefererence):
+    @patch('to_data_library.data.bq.default')
+    def test_upload_table(self, mock_default, mock_loadjobconfig,
+                          mock_bigqueryclient, mock_tablereference, mock_datasetrefererence):
+        mock_default.return_value = 'first', 'second'
         job_config = mock_loadjobconfig.return_value
 
         bq_client = bq.Client(project='fake_project')
