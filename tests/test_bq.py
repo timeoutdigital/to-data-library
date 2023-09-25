@@ -11,7 +11,7 @@ from to_data_library.data import bq
 class TestBQ(unittest.TestCase):
     @patch('google.cloud.storage.Client')
     @patch('google.cloud.bigquery.Client')
-    @patch('google.auth.default')
+    @patch('to_data_library.data.bq.default')
     def test_create_tmp_bucket_in_gcs(self, mock_default, mock_bigquery, mock_storage):
         mock_default.return_value = 'first', 'second'
         mock_storage_client = mock_storage.return_value
@@ -19,7 +19,7 @@ class TestBQ(unittest.TestCase):
         bq_client = bq.Client(project='fake_project')
         bq_client._create_tmp_bucket_in_gcs(mock_storage_client)
 
-        mock_storage_client.create_bucket.assert_called_once()
+        mock_storage_client.create_bucket.assert_called_with(ANY, location='EU')
 
     @patch('google.cloud.storage.Client')
     @patch('google.cloud.bigquery.Client')
