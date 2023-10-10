@@ -7,11 +7,14 @@ class Client:
 
     Args:
         project (str): The Project ID for the project which the client acts on behalf of.
+        impersonated_credentials (google.auth.impersonated_credentials) : The scoped
+        impersonated credentials object that will be used to authenticate the client
     """
 
-    def __init__(self, project):
+    def __init__(self, project, impersonated_credentials=None):
         self.project = project
-        self.storage_client = storage.Client(project=self.project)
+        self.storage_client = storage.Client(project=self.project,
+                                             credentials=impersonated_credentials)
 
     def download(self, gs_uri, destination_file_name=None):
         """Download from Google Storage to local.

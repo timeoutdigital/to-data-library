@@ -15,9 +15,11 @@ class Client:
 
     Args:
         project (str): The Project ID for the project which the client acts on behalf of.
+        impersonated_credentials (google.auth.impersonated_credentials) : The scoped
+        impersonated credentials object that will be used to authenticate the client
     """
 
-    def __init__(self, project):
+    def __init__(self, project, impersonated_credentials=None):
         self.project = project
 
         scopes = (
@@ -25,7 +27,10 @@ class Client:
             'https://www.googleapis.com/auth/cloud-platform',
             'https://www.googleapis.com/auth/drive',
         )
-        credentials, _ = default(scopes=scopes)
+        if impersonated_credentials:
+            credentials = impersonated_credentials
+        else:
+            credentials, _ = default(scopes=scopes)
         self.bigquery_client = bigquery.Client(
             credentials=credentials,
             project=self.project
