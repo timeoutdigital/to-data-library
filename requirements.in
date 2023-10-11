@@ -12,4 +12,5 @@ paramiko
 parse
 pip-tools
 pre-commit
+pyarrow
 pysftp
