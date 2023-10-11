@@ -2,6 +2,7 @@ import unittest
 import unittest.mock
 from unittest.mock import ANY, Mock, patch
 
+import pandas as pd
 from google.cloud import bigquery
 
 from to_data_library.data import bq
@@ -119,6 +120,70 @@ class TestBQ(unittest.TestCase):
                     client.upload_table(
                         table='some.table.test',
                         file_path='notchecked',
+                        write_preference='notchecked',
+                        partition_field="foo"
+                    )
+                    bq_mock.TimePartitioning.assert_called_with(type_=bq_mock.TimePartitioningType.DAY, field="foo")
+                    expected_table_id = "test"
+                    bq_mock.TableReference.assert_called_with(unittest.mock.ANY, table_id=expected_table_id)
+
+    @patch('google.cloud.bigquery.DatasetReference')
+    @patch('google.cloud.bigquery.TableReference')
+    @patch('google.cloud.bigquery.Client')
+    @patch('google.cloud.bigquery.LoadJobConfig')
+    @patch('to_data_library.data.bq.default')
+    def test_load_table_from_dataframe(
+        self, mock_default, mock_loadjobconfig, _, mock_tablereference, mock_datasetrefererence
+    ):
+        mock_default.return_value = 'first', 'second'
+
+        bq_client = bq.Client(project='fake_project')
+        bq_client.load_table_from_dataframe(
+            pd.read_csv('tests/data/sample.csv'),
+            table='{}.{}.{}'.format('fake_project', 'fake_data_set_id', 'uploaded_actors'),
+            write_preference='truncate',
+        )
+
+        mock_datasetrefererence.assert_called_with(project='fake_project', dataset_id='fake_data_set_id')
+        mock_loadjobconfig.assert_called_with(autodetect=True, write_disposition='WRITE_TRUNCATE')
+        mock_tablereference.assert_called_with(ANY, table_id='uploaded_actors')
+
+    def test_load_table_from_dataframe_partitioned_default(self):
+        # test default date type for partitioned table
+
+        with unittest.mock.patch('to_data_library.data.bq.bigquery') as bq_mock:
+            with unittest.mock.patch('to_data_library.data.bq.default') as default_mock:
+                with unittest.mock.patch('to_data_library.data.bq.open') as _:
+                    default_mock.return_value = 'nothing', 'here'
+                    client = bq.Client('foo')
+                    client.load_table_from_dataframe(
+                        data_df=pd.DataFrame(),
+                        table='some.table.foo',
+                        write_preference='notchecked',
+                        partition_date="bar",
+                        partition_field="notused"
+                    )
+                    bq_mock.TimePartitioning.assert_called_with(type_=bq_mock.TimePartitioningType.DAY)
+                    expected_table_id = 'foo$bar'
+                    bq_mock.TableReference.assert_called_with(unittest.mock.ANY, table_id=expected_table_id)
+
+    def test_load_table_from_dataframe_partitioned_field(self):
+        # test field partitioned table
+
+        with unittest.mock.patch('to_data_library.data.bq.bigquery') as bq_mock:
+            with unittest.mock.patch('to_data_library.data.bq.default') as default_mock:
+                with unittest.mock.patch('to_data_library.data.bq.open') as _:
+                    default_mock.return_value = 'nothing', 'here'
+                    client = bq.Client('foo')
+                    client.upload_table(
+                        table='some.table.test',
+                        file_path='notchecked',
+                        write_preference='notchecked',
+                        partition_field="foo"
+                    )
+                    client.load_table_from_dataframe(
+                        data_df=pd.DataFrame(),
+                        table='some.table.test',
                         write_preference='notchecked',
                         partition_field="foo"
                     )
