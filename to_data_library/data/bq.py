@@ -1,6 +1,8 @@
 import csv
 import uuid
+from typing import List
 
+import pandas as pd
 from google.auth import default
 from google.cloud import bigquery, storage
 from jinja2 import Template
@@ -152,6 +154,60 @@ class Client:
         with open(file_path, "rb") as source_file:
             logs.client.logger.info('Loading BigQuery table {} from file {}'.format(table, file_path))
             job = self.bigquery_client.load_table_from_file(source_file, table_ref, job_config=job_config)
+
+        job.result()
+
+    def load_table_from_dataframe(
+        self, data_df: pd.DataFrame, table: str, write_preference: str, auto_detect: bool = True,
+        schema: List[bigquery.SchemaField] = None, partition_date: str = None, partition_field: str = None
+    ):
+        """Import into the BigQuery table from the DataFrame.
+
+        Args:
+            data_df (str):  The DataFrame containing the data to write
+            table (str): The BigQuery table name. For example: ``project.dataset.table``.
+            write_preference (str): The option to specify what action to take when you load data from a source file.
+              Value can be one of
+                                              ``'empty'``: Writes the data only if the table is empty.
+                                              ``'append'``: Appends the data to the end of the table.
+                                              ``'truncate'``: Erases all existing data in a table before writing the
+                                                new data.
+            auto_detect (boolean, Optional):  True if the schema should automatically be detected otherwise False.
+              Defaults to :data:`True`.
+            schema (List[bigquery.SchemaField], Optional): The BigQuery table schema. Can be a partial schema.
+            partition_date (str, Optional): The ingestion date for partitioned destination table. For example:
+              ``20210101``. The partition field name will be __PARTITIONTIME
+            partition_field (str, Optional): The field on which the destination table is partitioned. The field must be
+              a top-level TIMESTAMP or DATE field. Only used if partition_date is not set.
+
+        Examples:
+            >>> from to_data_library.data import bq
+            >>> client = bq.Client(project='my-project-id')
+            >>> client.load_table_from_dataframe(data_df=df, table='my-project-id.my-dataset.my-table')
+
+        """
+
+        project, dataset_id, table_id = table.split('.')
+        dataset_ref = bigquery.DatasetReference(project=project, dataset_id=dataset_id)
+
+        job_config = bigquery.LoadJobConfig(
+            write_disposition=get_bq_write_disposition(write_preference),
+            autodetect=auto_detect if not schema else False,
+        )
+        if schema:
+            job_config.schema = schema
+
+        if partition_date:
+            job_config.time_partitioning = bigquery.TimePartitioning(type_=bigquery.TimePartitioningType.DAY)
+            table_id += '${}'.format(partition_date)
+        elif partition_field:
+            job_config.time_partitioning = bigquery.TimePartitioning(
+                type_=bigquery.TimePartitioningType.DAY, field=partition_field)
+
+        table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
+
+        logs.client.logger.info(f'Loading BigQuery table {table_id} from DataFrame')
+        job = self.bigquery_client.load_table_from_dataframe(data_df, table_ref, job_config=job_config)
 
         job.result()
 

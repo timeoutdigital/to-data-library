@@ -7,8 +7,10 @@ Jinja2
 markupsafe
 moto[s3]
 oauth2client
+pandas
 paramiko
 parse
 pip-tools
 pre-commit
+pyarrow
 pysftp
