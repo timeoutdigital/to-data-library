@@ -13,6 +13,7 @@ setup(name='to-data-library',
           "boto3",
           "pandas",
           "parse",
+          "pyarrow",
           "pysftp",
           "delegator.py",
           "markupsafe"])
