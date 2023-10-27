@@ -1,7 +1,6 @@
 import os
 import sys
 
-import boto3
 import botocore
 
 from to_data_library.data import logs
@@ -15,8 +14,8 @@ class Client:
             region (str): The AWS region
     """
 
-    def __init__(self, region):
-        self.s3_client = boto3.resource(
+    def __init__(self, aws_session, region):
+        self.s3_client = aws_session.resource(
             service_name='s3',
             region_name=region
         )
