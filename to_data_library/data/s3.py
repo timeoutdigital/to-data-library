@@ -11,12 +11,13 @@ class Client:
         Client to s3 Storage functionality.
 
         Args:
-            region (str): The AWS region
+            aws_session (str): A valid AWS session. boto3.session.Session
     """
 
     def __init__(self, aws_session):
-        self.s3_client = aws_session.resource(
-            service_name='s3',
+        self.aws_session = aws_session
+        self.s3_client = self.aws_session.resource(
+            service_name='s3'
         )
 
     def download(self, bucket_name, object_name, local_path='.'):
