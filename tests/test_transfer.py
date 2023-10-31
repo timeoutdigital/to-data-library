@@ -2,8 +2,6 @@ import unittest
 import unittest.mock
 from unittest.mock import ANY, Mock, patch
 
-import parse
-
 from tests.setup import setup
 from to_data_library.data import transfer
 

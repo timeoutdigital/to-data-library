@@ -3,8 +3,6 @@ import unittest
 
 import boto3
 from moto import mock_s3
-from unittest import mock
-from unittest.mock import Mock
 
 from tests.setup import setup
 from to_data_library.data.s3 import Client
