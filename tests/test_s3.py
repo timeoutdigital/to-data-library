@@ -32,7 +32,8 @@ class TestS3(unittest.TestCase):
         object.put(Body=content)
 
     def test_download(self):
-        test_client = Client(self.setup.s3_region)
+        mock_aws_session = boto3.Session()
+        test_client = Client(mock_aws_session)
 
         test_client.download(self.setup.s3_bucket,
                              'download_sample.csv')
@@ -45,7 +46,8 @@ class TestS3(unittest.TestCase):
         self.assertTrue(os.path.exists('download_s3_sample.csv'))
 
     def test_upload(self):
-        test_client = Client(self.setup.s3_region)
+        mock_aws_session = boto3.Session()
+        test_client = Client(mock_aws_session)
 
         test_client.upload('tests/data/sample.csv',
                            self.setup.s3_bucket)
