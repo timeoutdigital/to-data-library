@@ -84,6 +84,6 @@ class TestTransfer(unittest.TestCase):
         client._get_keys_in_s3_bucket(mock_aws_session, parsed_connection, 'fake_bucket_name', 'fake_prefix_name')
 
         mock_aws_session.assert_called_with('s3',
-                                     region_name='fake_s3_region',
-                                     aws_access_key_id='fake_s3_access_key',
-                                     aws_secret_access_key='fake_s3_secret_key')
+                                            region_name='fake_s3_region',
+                                            aws_access_key_id='fake_s3_access_key',
+                                            aws_secret_access_key='fake_s3_secret_key')

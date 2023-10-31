@@ -1,7 +1,6 @@
 import os
 import sys
 
-import boto3
 import botocore
 
 from to_data_library.data import logs
