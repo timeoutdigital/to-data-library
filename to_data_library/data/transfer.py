@@ -1,7 +1,5 @@
 import os
 
-import boto3
-import parse
 from google.api_core import exceptions
 from google.cloud import bigquery, storage
 
@@ -244,12 +242,10 @@ class Client:
             >>> from to_data_library.data import transfer
             >>> client = transfer.Client(project='my-project-id')
             >>> client.gs_to_s3(aws_session,
-            >>>                 gs_uri='gs://my-bucket-name/my-filename',                 
+            >>>                 gs_uri='gs://my-bucket-name/my-filename',
             >>>                 s3_bucket='bucket_name')
         """
 
-        
-        
         local_file = os.path.basename(gs_uri)
         gs_client = gs.Client(self.project)
         gs_client.download(gs_uri, local_file)
@@ -312,7 +308,7 @@ class Client:
         Returns:
             list: List of keys in that bucket that match the desired prefix
         """
-        s3_client_boto = aws_session.client('s3')      
+        s3_client_boto = aws_session.client('s3')
         s3_files = []
         paginator = s3_client_boto.get_paginator('list_objects_v2')
         pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix_name)
