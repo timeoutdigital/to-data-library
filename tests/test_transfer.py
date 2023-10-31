@@ -61,7 +61,7 @@ class TestTransfer(unittest.TestCase):
         mock_aws_session = Mock()
         mock_aws_session.return_value = 'fake_session'
         mock_aws_session.client.return_value.get_paginator().paginate.return_value = []
-        
+
         mock_default.return_value = 'first', 'second'
         client = transfer.Client(project=setup.project)
         client.s3_to_gs(aws_session=mock_aws_session,
@@ -75,7 +75,7 @@ class TestTransfer(unittest.TestCase):
     def test_get_keys_in_s3_bucket(self):
         mock_aws_session = Mock()
         mock_aws_session.client.return_value.get_paginator().paginate.return_value = []
-        
+
         client = transfer.Client(project=setup.project)
         res = client._get_keys_in_s3_bucket(mock_aws_session, 'fake_bucket_name', 'fake_prefix_name')
 
