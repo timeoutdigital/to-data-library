@@ -75,15 +75,15 @@ class TestTransfer(unittest.TestCase):
 
         mock_s3_resource.assert_called_with(service_name='s3', region_name='fake_s3_region')
 
-    @patch('boto3.client')
-    def test_get_keys_in_s3_bucket(self, mock_boto):
+    @patch('aws_session.client')
+    def test_get_keys_in_s3_bucket(self, mock_aws_session):
         parsed_connection = parse.parse(
             '{region}:{access_key}:{secret_key}', "{}:{}:{}".format('fake_s3_region', 'fake_s3_access_key',
                                                                     'fake_s3_secret_key'))
         client = transfer.Client(project=setup.project)
-        client._get_keys_in_s3_bucket(parsed_connection, 'fake_bucket_name', 'fake_prefix_name')
+        client._get_keys_in_s3_bucket(mock_aws_session, parsed_connection, 'fake_bucket_name', 'fake_prefix_name')
 
-        mock_boto.assert_called_with('s3',
+        mock_aws_session.assert_called_with('s3',
                                      region_name='fake_s3_region',
                                      aws_access_key_id='fake_s3_access_key',
                                      aws_secret_access_key='fake_s3_secret_key')

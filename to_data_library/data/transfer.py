@@ -229,7 +229,7 @@ class Client:
         ftp_client.upload_file(local_path=merged_file,
                                remote_path=ftp_filepath)
 
-    def gs_to_s3(self, aws_session, gs_uri, s3_connection_string, s3_bucket):
+    def gs_to_s3(self, aws_session, gs_uri, s3_bucket):
         """
         Exports file from Google storage bucket to S3 bucket
 
@@ -243,31 +243,28 @@ class Client:
         Example:
             >>> from to_data_library.data import transfer
             >>> client = transfer.Client(project='my-project-id')
-            >>> client.gs_to_s3(gs_uri='gs://my-bucket-name/my-filename',
-            >>>                 s3_connection_string='region:access_key:secret_key',
+            >>> client.gs_to_s3(aws_session,
+            >>>                 gs_uri='gs://my-bucket-name/my-filename',                 
             >>>                 s3_bucket='bucket_name')
         """
 
-        parsed_connection = parse.parse(
-            '{region}:{access_key}:{secret_key}', s3_connection_string)
+        
         
         local_file = os.path.basename(gs_uri)
         gs_client = gs.Client(self.project)
         gs_client.download(gs_uri, local_file)
 
-        s3_client = s3.Client(aws_session, parsed_connection['region'])
+        s3_client = s3.Client(aws_session)
         s3_client.upload(local_file,
                          s3_bucket)
 
-    def s3_to_gs(self, aws_session, s3_connection_string, s3_bucket_name,
+    def s3_to_gs(self, aws_session, s3_bucket_name,
                  s3_object_name, gs_bucket_name, gs_file_name=None):
         """
         Exports file(s) from S3 bucket to Google storage bucket
 
         Args:
           aws_session: authenticated AWS session.
-          s3_connection_string (str): The S3 connection string in the format
-                                   {region}:{access_key}:{secret_key}
           s3_bucket_name (str): s3 bucket name
           s3_object_name (str): s3 object name or prefix to match multiple files to copy
           gs_bucket_name (str): Google storage bucket name
@@ -276,27 +273,24 @@ class Client:
         Example:
             >>> from to_data_library.data import transfer
             >>> client = transfer.Client(project='my-project-id')
-            >>> client.s3_to_gs(s3_connection_string='region:access_key:secret_key',
+            >>> client.s3_to_gs(aws_session,
             >>>                 s3_bucket_name='my-s3-bucket_name',
             >>>                 s3_object_name='my-s3-file-prefix',
             >>>                 gs_bucket_name='my-gs-bucket-name',
             >>>                 gs_file_name='gs_file_name')
         """
 
-        parsed_connection = parse.parse(
-            '{region}:{access_key}:{secret_key}', s3_connection_string)
-
         # Retrieve the file(s) from S3 matching to the object
         logs.client.logger.info('Finding files in S3 bucket')
 
-        s3_files = self._get_keys_in_s3_bucket(parsed_connection=parsed_connection,
+        s3_files = self._get_keys_in_s3_bucket(aws_session=aws_session,
                                                bucket_name=s3_bucket_name,
                                                prefix_name=s3_object_name)
 
         logs.client.logger.info(f'Found {str(s3_files)} files in S3')
 
         # For every key found in s3, download to local and then upload to desired GS bucket.
-        s3_client = s3.Client(aws_session, parsed_connection['region'])
+        s3_client = s3.Client(aws_session)
         gs_client = gs.Client(self.project)
         for s3_file in s3_files:
             s3_client.download(s3_bucket_name, s3_file)
@@ -306,13 +300,12 @@ class Client:
             gs_client.upload(os.path.basename(s3_file),
                              gs_bucket_name, gs_file_name)
 
-    def _get_keys_in_s3_bucket(self, aws_session, parsed_connection, bucket_name, prefix_name):
+    def _get_keys_in_s3_bucket(self, aws_session, bucket_name, prefix_name):
         """Generate a list of keys for objects in an s3 bucket.
         Paginates the list_objects_v2 method to overcome 1000 key limit.
 
         Args:
             aws_session: authenticated AWS session.
-            parsed_connection (parse.Result): Parsed connection_string object
             bucket_name (str): Name of S3 bucket
             prefix_name (str): Prefix to search bucket for keys
 
@@ -367,9 +360,7 @@ class Client:
         """
 
         # Download S3 file to local
-        parsed_connection = parse.parse(
-            '{region}:{access_key}:{secret_key}', s3_connection_string)
-        s3_client = s3.Client(aws_session, parsed_connection['region'])
+        s3_client = s3.Client(aws_session)
         s3_client.download(bucket_name, object_name,
                            os.path.join('/tmp/', object_name))
 

@@ -15,10 +15,9 @@ class Client:
             region (str): The AWS region
     """
 
-    def __init__(self, aws_session, region):
+    def __init__(self, aws_session):
         self.s3_client = aws_session.resource(
             service_name='s3',
-            region_name=region
         )
 
     def download(self, bucket_name, object_name, local_path='.'):
@@ -33,7 +32,7 @@ class Client:
 
         Example:
             >>> from to_data_library.data import s3
-            >>> client = s3.Client(aws_session, )
+            >>> client = s3.Client(aws_session, 'region')
             >>> client.download(bucket_name='my-s3-bucket-name',
             >>>                 object_name='folder-name/object-name',
             >>>                 local_path='/my-local/folder/file.csv')
