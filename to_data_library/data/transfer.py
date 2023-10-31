@@ -319,7 +319,7 @@ class Client:
         Returns:
             list: List of keys in that bucket that match the desired prefix
         """
-        s3_client_boto = s3.client(aws_session, parsed_connection['region'])
+        s3_client_boto = aws_session.client('s3')      
         s3_files = []
         paginator = s3_client_boto.get_paginator('list_objects_v2')
         pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix_name)
@@ -335,7 +335,7 @@ class Client:
         Exports S3 file to BigQuery table
 
         Args:
-          aws_session: authenticated AWS session.
+                aws_session: authenticated AWS session.
           s3_connection_string (str): The S3 connection string in the format
                                       {region}:{access_key}:{secret_key}
           bucket_name (str): s3 bucket name
