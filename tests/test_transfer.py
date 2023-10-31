@@ -57,33 +57,28 @@ class TestTransfer(unittest.TestCase):
     @patch('boto3.client')
     @patch('boto3.resource')
     @patch('to_data_library.data.bq.default')
+    @patch('to_data_library.data.s3.Client')
     @patch('google.cloud.storage.Client')
-    def test_s3_to_gs(self, mock_storage, mock_default, mock_s3_resource, mock_s3_boto):
+    def test_s3_to_gs(self, mock_storage, mock_s3_client, mock_default, mock_s3_resource, mock_s3_boto):
+        mock_aws_session = Mock()
+        mock_aws_session.return_value = 'fake_session'
+        mock_aws_session.client.return_value.get_paginator().paginate.return_value = []
+        
         mock_default.return_value = 'first', 'second'
         client = transfer.Client(project=setup.project)
-        client.s3_to_gs(s3_connection_string="{}:{}:{}".format('fake_s3_region', 'fake_s3_access_key',
-                                                               'fake_s3_secret_key'),
+        client.s3_to_gs(aws_session=mock_aws_session,
                         s3_bucket_name='fake_s3_bucket',
                         s3_object_name='download_sample.csv',
                         gs_bucket_name='fake_gs_bucket_name',
                         gs_file_name='transfer_s3_to_gs.csv')
 
-        mock_s3_boto.assert_called_with('s3',
-                                        region_name='fake_s3_region',
-                                        aws_access_key_id='fake_s3_access_key',
-                                        aws_secret_access_key='fake_s3_secret_key')
+        mock_s3_client.assert_called_once()
 
-        mock_s3_resource.assert_called_with(service_name='s3', region_name='fake_s3_region')
-
-    @patch('aws_session.client')
-    def test_get_keys_in_s3_bucket(self, mock_aws_session):
-        parsed_connection = parse.parse(
-            '{region}:{access_key}:{secret_key}', "{}:{}:{}".format('fake_s3_region', 'fake_s3_access_key',
-                                                                    'fake_s3_secret_key'))
+    def test_get_keys_in_s3_bucket(self):
+        mock_aws_session = Mock()
+        mock_aws_session.client.return_value.get_paginator().paginate.return_value = []
+        
         client = transfer.Client(project=setup.project)
-        client._get_keys_in_s3_bucket(mock_aws_session, parsed_connection, 'fake_bucket_name', 'fake_prefix_name')
+        res = client._get_keys_in_s3_bucket(mock_aws_session, 'fake_bucket_name', 'fake_prefix_name')
 
-        mock_aws_session.assert_called_with('s3',
-                                     region_name='fake_s3_region',
-                                     aws_access_key_id='fake_s3_access_key',
-                                     aws_secret_access_key='fake_s3_secret_key')
+        self.assertEqual(res, [])
