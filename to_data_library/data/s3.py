@@ -33,7 +33,7 @@ class Client:
 
         Example:
             >>> from to_data_library.data import s3
-            >>> client = s3.Client(aws_session)
+            >>> client = s3.Client(aws_session, )
             >>> client.download(bucket_name='my-s3-bucket-name',
             >>>                 object_name='folder-name/object-name',
             >>>                 local_path='/my-local/folder/file.csv')
@@ -63,7 +63,7 @@ class Client:
 
         Example:
             >>> from to_data_library.data import s3
-            >>> client = s3.Client(aws_session)
+            >>> client = s3.Client(aws_session, 'region')
             >>> client.upload(local_path='/my-local/folder/file.csv',
             >>>               bucket_name='my-s3-bucket-name',
             >>>               object_name='object-name')
@@ -89,7 +89,7 @@ class Client:
 
         Example:
             >>> from to_data_library.data import s3
-            >>> client = s3.Client(aws_session)
+            >>> client = s3.Client(aws_session, 'region')
             >>> client.list_files(bucket_name='s3-bucket-name', path='/path/inside/bucket/')
         """
 
