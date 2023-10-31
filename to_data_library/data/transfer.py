@@ -321,16 +321,14 @@ class Client:
                 s3_files.append(obj.get('key'))
         return s3_files
 
-    def s3_to_bq(self, aws_session, s3_connection_string, bucket_name, object_name,
+    def s3_to_bq(self, aws_session, bucket_name, object_name,
                  bq_table, write_preference, auto_detect=True, separator=',',
                  skip_leading_rows=True, schema=None, partition_date=None):
         """
         Exports S3 file to BigQuery table
 
         Args:
-                aws_session: authenticated AWS session.
-          s3_connection_string (str): The S3 connection string in the format
-                                      {region}:{access_key}:{secret_key}
+          aws_session: authenticated AWS session.
           bucket_name (str): s3 bucket name
           object_name (str): s3 object name to copy
           bq_table (str): The BigQuery table. For example: ``my-project-id.my-dataset.my-table``
@@ -353,7 +351,7 @@ class Client:
         Example:
             >>> from to_data_library.data import transfer
             >>> client = transfer.Client(project='my-project-id')
-            >>> client.s3_to_bq(s3_connection_string='region:access_key:secret_key',
+            >>> client.s3_to_bq(aws_connection,
             >>>                 bucket_name='my-s3-bucket_name',
             >>>                 object_name='my-s3-object-name',
             >>>                 bq_table='my-project-id.my-dataset.my-table')
