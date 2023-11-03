@@ -103,9 +103,9 @@ class TestBQ(unittest.TestCase):
                         file_path='notchecked',
                         write_preference='notchecked',
                         partition_date="bar",
-                        partition_field="notused"
+                        partition_field="foo"
                     )
-                    bq_mock.TimePartitioning.assert_called_with(type_=bq_mock.TimePartitioningType.DAY)
+                    bq_mock.TimePartitioning.assert_called_with(type_=bq_mock.TimePartitioningType.DAY, field="foo")
                     expected_table_id = 'foo$bar'
                     bq_mock.TableReference.assert_called_with(unittest.mock.ANY, table_id=expected_table_id)
 
@@ -121,10 +121,11 @@ class TestBQ(unittest.TestCase):
                         table='some.table.test',
                         file_path='notchecked',
                         write_preference='notchecked',
+                        partition_date="bar",
                         partition_field="foo"
                     )
                     bq_mock.TimePartitioning.assert_called_with(type_=bq_mock.TimePartitioningType.DAY, field="foo")
-                    expected_table_id = "test"
+                    expected_table_id = "test$bar"
                     bq_mock.TableReference.assert_called_with(unittest.mock.ANY, table_id=expected_table_id)
 
     @patch('google.cloud.bigquery.DatasetReference')
@@ -161,9 +162,9 @@ class TestBQ(unittest.TestCase):
                         table='some.table.foo',
                         write_preference='notchecked',
                         partition_date="bar",
-                        partition_field="notused"
+                        partition_field="foo"
                     )
-                    bq_mock.TimePartitioning.assert_called_with(type_=bq_mock.TimePartitioningType.DAY)
+                    bq_mock.TimePartitioning.assert_called_with(type_=bq_mock.TimePartitioningType.DAY, field='foo')
                     expected_table_id = 'foo$bar'
                     bq_mock.TableReference.assert_called_with(unittest.mock.ANY, table_id=expected_table_id)
 
@@ -179,16 +180,18 @@ class TestBQ(unittest.TestCase):
                         table='some.table.test',
                         file_path='notchecked',
                         write_preference='notchecked',
+                        partition_date="bar",
                         partition_field="foo"
                     )
                     client.load_table_from_dataframe(
                         data_df=pd.DataFrame(),
                         table='some.table.test',
                         write_preference='notchecked',
+                        partition_date="bar",
                         partition_field="foo"
                     )
                     bq_mock.TimePartitioning.assert_called_with(type_=bq_mock.TimePartitioningType.DAY, field="foo")
-                    expected_table_id = "test"
+                    expected_table_id = "test$bar"
                     bq_mock.TableReference.assert_called_with(unittest.mock.ANY, table_id=expected_table_id)
 
     @unittest.expectedFailure
