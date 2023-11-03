@@ -1,4 +1,5 @@
 import csv
+import sys
 import uuid
 from typing import List
 
@@ -116,7 +117,8 @@ class Client:
             partition_date (str, Optional): The ingestion date for partitioned destination table. For example:
               ``20210101``. The partition field name will be __PARTITIONTIME
             partition_field (str, Optional): The field on which the destination table is partitioned. The field must be
-              a top-level TIMESTAMP or DATE field. Only used if partition_date is not set.
+              a top-level TIMESTAMP or DATE field. Must be used in conjuction with partitioned_date.
+              Here partitioned_date will be used to update or alter the table using the partition
             max_bad_records (int, Optional): The maximum number of invalid rows. Defaults to :data:`0`.
 
         Examples:
@@ -142,13 +144,16 @@ class Client:
         if schema:
             job_config.schema = [bigquery.SchemaField(schema_field[0], schema_field[1]) for schema_field in schema]
 
-        if partition_date:
+        if (partition_date and not partition_field):
             job_config.time_partitioning = bigquery.TimePartitioning(type_=bigquery.TimePartitioningType.DAY)
             table_id += '${}'.format(partition_date)
-        elif partition_field:
+        elif (partition_date and partition_field):
             job_config.time_partitioning = bigquery.TimePartitioning(
                 type_=bigquery.TimePartitioningType.DAY, field=partition_field)
-
+            table_id += '${}'.format(partition_date)
+        elif (partition_field and not partition_date):
+            logs.client.logger.error("Error if partition_field is supplied partitioned_date must also be supplied")
+            sys.exit(1)
         table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
 
         with open(file_path, "rb") as source_file:
@@ -178,7 +183,8 @@ class Client:
             partition_date (str, Optional): The ingestion date for partitioned destination table. For example:
               ``20210101``. The partition field name will be __PARTITIONTIME
             partition_field (str, Optional): The field on which the destination table is partitioned. The field must be
-              a top-level TIMESTAMP or DATE field. Only used if partition_date is not set.
+              a top-level TIMESTAMP or DATE field. Must be used in conjuction with partitioned_date.
+              Here partitioned_date will be used to update or alter the table using the partition
 
         Examples:
             >>> from to_data_library.data import bq
@@ -197,13 +203,16 @@ class Client:
         if schema:
             job_config.schema = schema
 
-        if partition_date:
+        if (partition_date and not partition_field):
             job_config.time_partitioning = bigquery.TimePartitioning(type_=bigquery.TimePartitioningType.DAY)
             table_id += '${}'.format(partition_date)
-        elif partition_field:
+        elif (partition_date and partition_field):
             job_config.time_partitioning = bigquery.TimePartitioning(
                 type_=bigquery.TimePartitioningType.DAY, field=partition_field)
-
+            table_id += '${}'.format(partition_date)
+        elif (partition_field and not partition_date):
+            logs.client.logger.error("Error if partition_field is supplied partitioned_date must also be supplied")
+            sys.exit(1)
         table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
 
         logs.client.logger.info(f'Loading BigQuery table {table_id} from DataFrame')
