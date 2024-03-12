@@ -210,7 +210,7 @@ class Client:
             job_config.time_partitioning = bigquery.TimePartitioning(
                 type_=bigquery.TimePartitioningType.DAY, field=partition_field)
             table_id += '${}'.format(partition_date)
-        elif (partition_field and not partition_date):
+        elif (partition_field and not partition_date and write_preference == 'truncate'):
             logs.client.logger.error("Error if partition_field is supplied partitioned_date must also be supplied")
             sys.exit(1)
         table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
