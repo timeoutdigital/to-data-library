@@ -1,6 +1,6 @@
 import unittest
 import unittest.mock
-from unittest.mock import ANY, Mock, patch
+from unittest.mock import ANY, MagicMock, Mock, PropertyMock, patch
 
 import pandas as pd
 from google.cloud import bigquery
@@ -137,16 +137,22 @@ class TestBQ(unittest.TestCase):
         self, mock_default, mock_loadjobconfig, _, mock_tablereference, mock_datasetrefererence
     ):
         mock_default.return_value = 'first', 'second'
+        mock_loadjobconfig_obj = MagicMock(specification=bigquery.LoadJobConfig)
+        mock_loadjobconfig_obj.schema_update_options = PropertyMock()
+        mock_loadjobconfig.return_value = mock_loadjobconfig_obj
+        schema_update_options = [bigquery.SchemaUpdateOption.ALLOW_FIELD_ADDITION]
 
         bq_client = bq.Client(project='fake_project')
         bq_client.load_table_from_dataframe(
             pd.read_csv('tests/data/sample.csv'),
             table='{}.{}.{}'.format('fake_project', 'fake_data_set_id', 'uploaded_actors'),
             write_preference='truncate',
+            job_config_kwargs={'schema_update_options': schema_update_options},
         )
 
         mock_datasetrefererence.assert_called_with(project='fake_project', dataset_id='fake_data_set_id')
         mock_loadjobconfig.assert_called_with(autodetect=True, write_disposition='WRITE_TRUNCATE')
+        self.assertListEqual(schema_update_options, mock_loadjobconfig_obj.schema_update_options)
         mock_tablereference.assert_called_with(ANY, table_id='uploaded_actors')
 
     def test_load_table_from_dataframe_partitioned_default(self):

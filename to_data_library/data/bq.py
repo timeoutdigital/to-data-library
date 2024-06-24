@@ -1,7 +1,7 @@
 import csv
 import sys
 import uuid
-from typing import List
+from typing import Dict, List
 
 import pandas as pd
 from google.auth import default
@@ -164,7 +164,8 @@ class Client:
 
     def load_table_from_dataframe(
         self, data_df: pd.DataFrame, table: str, write_preference: str, auto_detect: bool = True,
-        schema: List[bigquery.SchemaField] = None, partition_date: str = None, partition_field: str = None
+        schema: List[bigquery.SchemaField] = None, partition_date: str = None, partition_field: str = None,
+        job_config_kwargs: Dict = None
     ):
         """Import into the BigQuery table from the DataFrame.
 
@@ -185,6 +186,7 @@ class Client:
             partition_field (str, Optional): The field on which the destination table is partitioned. The field must be
               a top-level TIMESTAMP or DATE field. Must be used in conjuction with partitioned_date.
               Here partitioned_date will be used to update or alter the table using the partition
+            job_config_kwargs (dict, Optional): Any additional properties to set for the job config
 
         Examples:
             >>> from to_data_library.data import bq
@@ -202,6 +204,10 @@ class Client:
         )
         if schema:
             job_config.schema = schema
+
+        job_config_kwargs = job_config_kwargs if job_config_kwargs else {}
+        for key, value in job_config_kwargs.items():
+            setattr(job_config, key, value)
 
         if (partition_date and not partition_field):
             job_config.time_partitioning = bigquery.TimePartitioning(type_=bigquery.TimePartitioningType.DAY)
