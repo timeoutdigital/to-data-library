@@ -137,6 +137,71 @@ class Client:
 
         job.result()
 
+    def gs_parquet_to_bq(self, gs_uris, table, write_preference, auto_detect=True, 
+                 schema=(), partition_date=None, max_bad_records=0):
+        """Load file from Google Storage into the BigQuery table
+
+        Args:
+            gs_uris (Union[str, Sequence[str]]):  The Google Storage uri(s) for the file(s). For example: A single file:
+              ``gs://my_bucket_name/my_filename``, multiple files: ``[gs://my_bucket_name/my_first_file,
+              gs://my_bucket_name/my_second_file]``.
+            table (str): The BigQuery table name. For example: ``project.dataset.table``.
+            write_preference (str): The option to specify what action to take when you load data from a source file.
+            Value can be on of
+                                              ``'empty'``: Writes the data only if the table is empty.
+                                              ``'append'``: Appends the data to the end of the table.
+                                              ``'truncate'``: Erases all existing data in a table before writing the
+                                                new data.
+            auto_detect (boolean, Optional):  True if the schema should automatically be detected otherwise False.
+            Defaults to :data:`True`.
+            schema (tuple): The BigQuery table schema. For example: ``(('first_field','STRING'),('second_field',
+              'STRING'))``
+            partition_date (str, Optional): The ingestion date for partitioned BigQuery table. For example: ``20210101``
+            . The partition field name will be __PARTITIONTIME.
+            max_bad_records (int, Optional): The maximum number of rows with errors. Defaults to :data:0
+
+        Examples:
+            >>> from to_data_library.data import transfer
+            >>> client = transfer.Client(project='my-project-id')
+            >>> client.gs_to_bq(gs_uris='gs://my-bucket-name/my-filename',table='my-project-id.my_dataset.my_table')
+        """
+
+        project, dataset_id, table_id = table.split('.')
+        dataset_ref = bigquery.DatasetReference(
+            project=project, dataset_id=dataset_id)
+        table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
+
+        job_config = bigquery.LoadJobConfig(
+            source_format=bigquery.SourceFormat.PARQUET,
+            autodetect=auto_detect,
+            write_disposition=get_bq_write_disposition(write_preference),
+            allow_quoted_newlines=True,
+            max_bad_records=max_bad_records
+        )
+
+        if partition_date:
+            job_config.time_partitioning = bigquery.TimePartitioning(
+                type_=bigquery.TimePartitioningType.DAY)
+            table_id += '${}'.format(partition_date)
+
+        bq_client = bq.Client(project)
+        try:
+            bq_client.create_dataset(dataset_id)
+        except exceptions.Conflict:
+            logs.client.logger.info(
+                'Dataset {} Already exists'.format(dataset_id))
+
+        if schema:
+            job_config.schema = [bigquery.SchemaField(
+                schema_field[0], schema_field[1]) for schema_field in schema]
+
+        logs.client.logger.info(
+            'Loading BigQuery table {} from {}'.format(table, gs_uris))
+        job = bq_client.load_table_from_uri(
+            gs_uris, table_ref, job_config=job_config)
+
+        job.result()
+
     def ftp_to_bq(self, ftp_connection_string, ftp_filepath, bq_table, write_preference, separator=',',
                   skip_leading_rows=True, bq_table_schema=None, partition_date=None):
         """Export from FTP to BigQuery
