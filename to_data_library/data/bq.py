@@ -162,6 +162,21 @@ class Client:
 
         job.result()
 
+    def load_table_from_uris(self, gs_uris, table_ref, job_config):
+
+        """Import into BigQuery table from a URI
+        
+        Args: gs_uris (list): A list of URIs to import
+              table_ref: The table reference to import to
+              job_config: A config for the import
+
+        """
+
+        job = self.bigquery_client.load_table_from_uri(
+            source_uris=gs_uris, destination=table_ref, job_config=job_config)
+
+        job.result()
+
     def load_table_from_dataframe(
         self, data_df: pd.DataFrame, table: str, write_preference: str, auto_detect: bool = True,
         schema: List[bigquery.SchemaField] = None, partition_date: str = None, partition_field: str = None,
