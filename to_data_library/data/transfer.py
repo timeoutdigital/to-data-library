@@ -374,6 +374,7 @@ class Client:
             aws_session: authenticated AWS session.
             bucket_name (str): Name of S3 bucket
             prefix_name (str): Prefix to search bucket for keys
+            wildcard (str): Option wildcard for filtering
 
         Returns:
             list: List of keys in that bucket that match the desired prefix
@@ -386,7 +387,6 @@ class Client:
 
         pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix_name)
         for page in pages:
-            print(f'Page: {page}')
             for obj in page['Contents']:
                 if re.match(regex, obj['Key']):
                     s3_files.append(obj.get('Key'))
