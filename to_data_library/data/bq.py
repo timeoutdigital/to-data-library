@@ -165,7 +165,7 @@ class Client:
     def load_table_from_uris(self, gs_uris, table_ref, job_config):
 
         """Import into BigQuery table from a URI
-        
+
         Args: gs_uris (list): A list of URIs to import
               table_ref: The table reference to import to
               job_config: A config for the import

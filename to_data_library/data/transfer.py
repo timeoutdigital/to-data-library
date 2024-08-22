@@ -138,8 +138,8 @@ class Client:
 
         job.result()
 
-    def gs_parquet_to_bq(self, gs_uris, table, write_preference, auto_detect=True, 
-                 schema=(), partition_date=None, max_bad_records=0):
+    def gs_parquet_to_bq(self, gs_uris, table, write_preference, auto_detect=True,
+                         schema=(), partition_date=None, max_bad_records=0):
         """Load file from Google Storage into the BigQuery table
 
         Args:
@@ -199,7 +199,6 @@ class Client:
             'Loading BigQuery table {} from {}'.format(table, gs_uris))
         bq_client.load_table_from_uris(
             gs_uris=gs_uris, table_ref=table_ref, job_config=job_config)
-
 
     def ftp_to_bq(self, ftp_connection_string, ftp_filepath, bq_table, write_preference, separator=',',
                   skip_leading_rows=True, bq_table_schema=None, partition_date=None):

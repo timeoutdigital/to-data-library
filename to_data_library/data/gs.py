@@ -40,9 +40,9 @@ class Client:
         """
         if not blob_name:
             blob_name = source_file_name.split('/')[-1]
-        
+
         # For the API to work, need to remove 'gs://'
-        bucket_rename = bucket_name.replace('gs://','')
+        bucket_rename = bucket_name.replace('gs://', '')
         bucket = self.storage_client.bucket(bucket_rename)
         blob = bucket.blob(blob_name)
 
@@ -61,7 +61,7 @@ class Client:
         """
 
         # For the API to work, need to remove 'gs://'
-        bucket_rename = bucket_name.replace('gs://','')
+        bucket_rename = bucket_name.replace('gs://', '')
         bucket = self.storage_client.bucket(bucket_rename)
         blobs = bucket.list_blobs(prefix=prefix)
 
@@ -73,7 +73,7 @@ class Client:
                 gs_uris.append(uri)
 
         return gs_uris
-   
+
     def create_bucket(self, bucket_name):
         """create a bucket in Google Storage.
 
