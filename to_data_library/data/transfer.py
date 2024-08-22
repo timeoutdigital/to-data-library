@@ -1,4 +1,5 @@
 import os
+import re
 
 from google.api_core import exceptions
 from google.cloud import bigquery, storage
@@ -137,6 +138,68 @@ class Client:
 
         job.result()
 
+    def gs_parquet_to_bq(self, gs_uris, table, write_preference, auto_detect=True,
+                         schema=(), partition_date=None, max_bad_records=0):
+        """Load file from Google Storage into the BigQuery table
+
+        Args:
+            gs_uris (Union[str, Sequence[str]]):  The Google Storage uri(s) for the file(s). For example: A single file:
+              ``gs://my_bucket_name/my_filename``, multiple files: ``[gs://my_bucket_name/my_first_file,
+              gs://my_bucket_name/my_second_file]``.
+            table (str): The BigQuery table name. For example: ``project.dataset.table``.
+            write_preference (str): The option to specify what action to take when you load data from a source file.
+            Value can be on of
+                                              ``'empty'``: Writes the data only if the table is empty.
+                                              ``'append'``: Appends the data to the end of the table.
+                                              ``'truncate'``: Erases all existing data in a table before writing the
+                                                new data.
+            auto_detect (boolean, Optional):  True if the schema should automatically be detected otherwise False.
+            Defaults to :data:`True`.
+            schema (tuple): The BigQuery table schema. For example: ``(('first_field','STRING'),('second_field',
+              'STRING'))``
+            partition_date (str, Optional): The ingestion date for partitioned BigQuery table. For example: ``20210101``
+            . The partition field name will be __PARTITIONTIME.
+            max_bad_records (int, Optional): The maximum number of rows with errors. Defaults to :data:0
+
+        Examples:
+            >>> from to_data_library.data import transfer
+            >>> client = transfer.Client(project='my-project-id')
+            >>> client.gs_to_bq(gs_uris='gs://my-bucket-name/my-filename',table='my-project-id.my_dataset.my_table')
+        """
+
+        project, dataset_id, table_id = table.split('.')
+        dataset_ref = bigquery.DatasetReference(
+            project=project, dataset_id=dataset_id)
+        table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
+
+        job_config = bigquery.LoadJobConfig(
+            source_format=bigquery.SourceFormat.PARQUET,
+            autodetect=auto_detect if not schema else False,
+            write_disposition=get_bq_write_disposition(write_preference),
+            max_bad_records=max_bad_records
+        )
+
+        if partition_date:
+            job_config.time_partitioning = bigquery.TimePartitioning(
+                type_=bigquery.TimePartitioningType.DAY)
+            table_id += '${}'.format(partition_date)
+
+        bq_client = bq.Client(project)
+        try:
+            bq_client.create_dataset(dataset_id)
+        except exceptions.Conflict:
+            logs.client.logger.info(
+                'Dataset {} Already exists'.format(dataset_id))
+
+        if schema:
+            job_config.schema = [bigquery.SchemaField(
+                schema_field[0], schema_field[1]) for schema_field in schema]
+
+        logs.client.logger.info(
+            'Loading BigQuery table {} from {}'.format(table, gs_uris))
+        bq_client.load_table_from_uris(
+            gs_uris=gs_uris, table_ref=table_ref, job_config=job_config)
+
     def ftp_to_bq(self, ftp_connection_string, ftp_filepath, bq_table, write_preference, separator=',',
                   skip_leading_rows=True, bq_table_schema=None, partition_date=None):
         """Export from FTP to BigQuery
@@ -255,7 +318,7 @@ class Client:
                          s3_bucket)
 
     def s3_to_gs(self, aws_session, s3_bucket_name,
-                 s3_object_name, gs_bucket_name, gs_file_name=None):
+                 s3_object_name, gs_bucket_name, gs_file_name=None, wildcard=None):
         """
         Exports file(s) from S3 bucket to Google storage bucket
 
@@ -265,6 +328,7 @@ class Client:
           s3_object_name (str): s3 object name or prefix to match multiple files to copy
           gs_bucket_name (str): Google storage bucket name
           gs_file_name (str): GS file name
+          wildcard (str): regex wildcard (default '.*')
 
         Example:
             >>> from to_data_library.data import transfer
@@ -279,9 +343,13 @@ class Client:
         # Retrieve the file(s) from S3 matching to the object
         logs.client.logger.info('Finding files in S3 bucket')
 
+        if not wildcard:
+            wildcard = '.*'
+
         s3_files = self._get_keys_in_s3_bucket(aws_session=aws_session,
                                                bucket_name=s3_bucket_name,
-                                               prefix_name=s3_object_name)
+                                               prefix_name=s3_object_name,
+                                               wildcard=wildcard)
 
         logs.client.logger.info(f'Found {str(s3_files)} files in S3')
 
@@ -293,10 +361,11 @@ class Client:
 
             gs_file_name = (gs_file_name if gs_file_name is not None else s3_file) \
                 if len(s3_files) == 1 else s3_file
+
             gs_client.upload(os.path.basename(s3_file),
                              gs_bucket_name, gs_file_name)
 
-    def _get_keys_in_s3_bucket(self, aws_session, bucket_name, prefix_name):
+    def _get_keys_in_s3_bucket(self, aws_session, bucket_name, prefix_name, wildcard='.*'):
         """Generate a list of keys for objects in an s3 bucket.
         Paginates the list_objects_v2 method to overcome 1000 key limit.
 
@@ -304,6 +373,7 @@ class Client:
             aws_session: authenticated AWS session.
             bucket_name (str): Name of S3 bucket
             prefix_name (str): Prefix to search bucket for keys
+            wildcard (str): Option wildcard for filtering
 
         Returns:
             list: List of keys in that bucket that match the desired prefix
@@ -311,10 +381,15 @@ class Client:
         s3_client_boto = aws_session.client('s3')
         s3_files = []
         paginator = s3_client_boto.get_paginator('list_objects_v2')
+
+        regex = re.compile(wildcard)
+
         pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix_name)
         for page in pages:
             for obj in page['Contents']:
-                s3_files.append(obj.get('key'))
+                if re.match(regex, obj['Key']):
+                    s3_files.append(obj.get('Key'))
+
         return s3_files
 
     def s3_to_bq(self, aws_session, bucket_name, object_name,

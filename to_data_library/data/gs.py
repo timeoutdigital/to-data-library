@@ -41,9 +41,38 @@ class Client:
         if not blob_name:
             blob_name = source_file_name.split('/')[-1]
 
-        bucket = self.storage_client.bucket(bucket_name)
+        # For the API to work, need to remove 'gs://'
+        bucket_rename = bucket_name.replace('gs://', '')
+        bucket = self.storage_client.bucket(bucket_rename)
         blob = bucket.blob(blob_name)
+
         blob.upload_from_filename(source_file_name)
+
+    def list_bucket_uris(self, bucket_name, file_type='csv', prefix=None):
+        """Lists the files in a bucket
+
+        Args:
+            bucket_name (str): the bucket name
+            file_type (str): the prefix for the files to list (default: csv)
+            prefix (str): the folder path to the files
+
+        Returns:
+            list: The list of the contents
+        """
+
+        # For the API to work, need to remove 'gs://'
+        bucket_rename = bucket_name.replace('gs://', '')
+        bucket = self.storage_client.bucket(bucket_rename)
+        blobs = bucket.list_blobs(prefix=prefix)
+
+        gs_uris = []
+
+        for blob in blobs:
+            if blob.name.endswith(file_type):
+                uri = f"gs://{bucket_rename}/{blob.name}"
+                gs_uris.append(uri)
+
+        return gs_uris
 
     def create_bucket(self, bucket_name):
         """create a bucket in Google Storage.
