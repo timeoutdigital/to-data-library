@@ -401,6 +401,7 @@ class Client:
 
         pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix_name)
         print(f'Pages: {pages}')
+
         for page in pages:
             print(f'Page: {page}')
             for obj in page['Contents']:
