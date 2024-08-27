@@ -50,6 +50,7 @@ class Client:
             sys.exit(1)
 
         logs.client.logger.info("File download completed")
+        return local_path
 
     def upload(self, local_path, bucket_name, object_name=None):
         """
