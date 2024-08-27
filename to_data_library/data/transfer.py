@@ -369,7 +369,7 @@ class Client:
             gs_file_name = (gs_file_name if gs_file_name is not None else s3_file) \
                 if len(s3_files) == 1 else s3_file
 
-            # Try to upload file from local to GCS
+            # Try to upload file from local to GCS.
             try:
                 gs_client.upload(local_file, gs_bucket_name, gs_file_name)
                 logs.client.logger.info(f'Successfully uploaded {local_file} to gs://{gs_bucket_name}/{gs_file_name}')
