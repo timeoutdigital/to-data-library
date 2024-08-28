@@ -400,9 +400,7 @@ class Client:
         regex = re.compile(wildcard)
 
         pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix_name)
-        print(f'Pages: {pages}')
         for page in pages:
-            print(f'Page: {page}')
             for obj in page['Contents']:
                 key = obj['Key']
                 if not key.endswith('/') and re.match(regex, key):
