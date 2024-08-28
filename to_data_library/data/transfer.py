@@ -16,8 +16,9 @@ class Client:
         project (str): The Project ID for the project which the client acts on behalf of.
     """
 
-    def __init__(self, project):
+    def __init__(self, project, impersonated_credentials=None):
         self.project = project
+        self.impersonated_credentials = impersonated_credentials
 
     def bq_to_gs(self, table, bucket_name, separator=',', print_header=True, compress=False):
         """Extract BigQuery table into the GoogleStorage
@@ -119,7 +120,8 @@ class Client:
                 type_=bigquery.TimePartitioningType.DAY)
             table_id += '${}'.format(partition_date)
 
-        bq_client = bq.Client(project)
+        bq_client = bq.Client(project,
+                              impersonated_credentials=self.impersonated_credentials)
         try:
             bq_client.create_dataset(dataset_id)
         except exceptions.Conflict:
@@ -184,7 +186,8 @@ class Client:
                 type_=bigquery.TimePartitioningType.DAY)
             table_id += '${}'.format(partition_date)
 
-        bq_client = bq.Client(project)
+        bq_client = bq.Client(project=project,
+                              impersonated_credentials=self.impersonated_credentials)
         try:
             bq_client.create_dataset(dataset_id)
         except exceptions.Conflict:
@@ -238,7 +241,8 @@ class Client:
         local_file = ftp_client.download_file(ftp_filepath)
 
         # upload the ftp file into BigQuery
-        bq_client = bq.Client(project=self.project)
+        bq_client = bq.Client(project=self.project,
+                              impersonated_credentials=self.impersonated_credentials)
         bq_client.upload_table(
             file_path=local_file,
             table=bq_table,
@@ -271,7 +275,8 @@ class Client:
 
         """
         # download the the BigQuery table into local
-        bq_client = bq.Client(project=self.project)
+        bq_client = bq.Client(project=self.project,
+                              impersonated_credentials=self.impersonated_credentials)
         local_files = bq_client.download_table(
             table=bq_table,
             separator=separator,
@@ -310,7 +315,8 @@ class Client:
         """
 
         local_file = os.path.basename(gs_uri)
-        gs_client = gs.Client(self.project)
+        gs_client = gs.Client(self.project,
+                              impersonated_credentials=self.impersonated_credentials)
         gs_client.download(gs_uri, local_file)
 
         s3_client = s3.Client(aws_session)
@@ -356,7 +362,7 @@ class Client:
 
         # For every key found in s3, download to local and then upload to desired GS bucket.
         s3_client = s3.Client(aws_session)
-        gs_client = gs.Client(self.project)
+        gs_client = gs.Client(self.project, impersonated_credentials=self.impersonated_credentials)
 
         for s3_file in s3_files:
             # Try to download the file to 'local'
@@ -372,9 +378,9 @@ class Client:
             # Try to upload file from local to GCS.
             try:
                 gs_client.upload(local_file, gs_bucket_name, gs_file_name)
-                logs.client.logger.info(f'Successfully uploaded {local_file} to gs://{gs_bucket_name}/{gs_file_name}')
+                logs.client.logger.info(f'Successfully uploaded {local_file} to {gs_bucket_name}/{gs_file_name}')
             except Exception as e:
-                logs.client.logger.error(f"Failed to upload {local_file} to gs://{gs_bucket_name}/{gs_file_name}: {e}")
+                logs.client.logger.error(f"Failed to upload {local_file} to {gs_bucket_name}/{gs_file_name}: {e}")
             finally:
                 if os.path.exists(local_file):
                     os.remove(local_file)
