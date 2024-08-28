@@ -321,6 +321,7 @@ class Client:
                  s3_object_name, gs_bucket_name, gs_file_name=None, wildcard=None):
         """
         Exports file(s) from S3 bucket to Google storage bucket
+        Added threading to speed up execution
 
         Args:
           aws_session: authenticated AWS session.
@@ -356,14 +357,28 @@ class Client:
         # For every key found in s3, download to local and then upload to desired GS bucket.
         s3_client = s3.Client(aws_session)
         gs_client = gs.Client(self.project)
+
         for s3_file in s3_files:
-            s3_client.download(s3_bucket_name, s3_file)
+            # Try to download the file to 'local'
+            try:
+                local_file = s3_client.download(s3_bucket_name, s3_file)
+                logs.client.logger.info(f'Successfully downloaded {local_file} to local')
+            except Exception as e:
+                logs.client.logger.error(f"Failed to download {local_file} to local: {e}")
 
             gs_file_name = (gs_file_name if gs_file_name is not None else s3_file) \
                 if len(s3_files) == 1 else s3_file
 
-            gs_client.upload(os.path.basename(s3_file),
-                             gs_bucket_name, gs_file_name)
+            # Try to upload file from local to GCS.
+            try:
+                gs_client.upload(local_file, gs_bucket_name, gs_file_name)
+                logs.client.logger.info(f'Successfully uploaded {local_file} to gs://{gs_bucket_name}/{gs_file_name}')
+            except Exception as e:
+                logs.client.logger.error(f"Failed to upload {local_file} to gs://{gs_bucket_name}/{gs_file_name}: {e}")
+            finally:
+                if os.path.exists(local_file):
+                    os.remove(local_file)
+                    logs.client.logger.info(f'Deleted local file {local_file}')
 
     def _get_keys_in_s3_bucket(self, aws_session, bucket_name, prefix_name, wildcard='.*'):
         """Generate a list of keys for objects in an s3 bucket.
@@ -385,7 +400,6 @@ class Client:
         regex = re.compile(wildcard)
 
         pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix_name)
-        print(f'pages: {pages}')
         for page in pages:
             for obj in page['Contents']:
                 key = obj['Key']
