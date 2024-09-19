@@ -70,9 +70,14 @@ class Client:
 
         return ['gs://{}/{}'.format(bucket_name, blob.name) for blob in blobs]
 
-    def gs_to_bq(self, gs_uris, table, write_preference, auto_detect: bool = True, skip_leading_rows: bool = True,
-                 separator: str = None, source_format: str = 'CSV',
-                 schema: List[bigquery.SchemaField] = None, partition_date: str = None,
+    def gs_to_bq(self, gs_uris, table,
+                 write_preference,
+                 auto_detect: bool = True,
+                 skip_leading_rows: bool = True,
+                 separator: str = None,
+                 source_format: str = 'CSV',
+                 schema: List[bigquery.SchemaField] = None,
+                 partition_date: str = None,
                  max_bad_records: int = 0):
         """Load file from Google Storage into the BigQuery table
 
