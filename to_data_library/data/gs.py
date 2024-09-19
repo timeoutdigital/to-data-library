@@ -1,4 +1,11 @@
+import gzip
+import json
+from io import BytesIO
+
+import ndjson
 from google.cloud import storage
+
+from to_data_library.data import logs
 
 
 class Client:
@@ -82,3 +89,39 @@ class Client:
         """
 
         self.storage_client.create_bucket(bucket_name, location='EU')
+
+    def convert_json_array_to_ndjson(self, bucket_name, input_gz_file, output_file):
+        """Converts a gzip json file to ndjson
+
+        Args:
+            bucket_name (str): the bucket name
+            input_gz_file (str): the path and name of the GZIP file to be processed (format: gs://path/to/file.gz)
+            output_file (str): the path and name of the file to be created (format: gs://path/to/file.ndjson)
+        """
+        # Rename the bucket and file names for the API to work
+        bucket_rename = bucket_name.replace('gs://', '')
+        input_gz_file_rename = input_gz_file[len(bucket_name)+1:]
+        output_file_rename = output_file[len(bucket_name)+1:]
+
+        # Get the GCS bucket and blobs
+        bucket = self.storage_client.bucket(bucket_rename)
+        input_blob = bucket.blob(input_gz_file_rename)
+        target_blob = bucket.blob(output_file_rename)
+
+        #  Delete the converted file if it already exists
+        if target_blob.exists():
+            target_blob.delete()
+
+        # Download the gzipped JSON file from GCS
+        compressed_data = BytesIO(input_blob.download_as_bytes())
+
+        # Decompress the gzip data and read the JSON array
+        with gzip.GzipFile(fileobj=compressed_data, mode='rb') as f:
+            json_data = json.load(f)
+
+        # Convert the list of JSON objects to NDJSON format
+        ndjson_data = ndjson.dumps(json_data)
+
+        # Upload the new NDJSON file to GCS
+        target_blob.upload_from_string(ndjson_data, content_type='application/json')
+        logs.client.logger.info(f"Converted and uploaded NDJSON file to: {output_file}")

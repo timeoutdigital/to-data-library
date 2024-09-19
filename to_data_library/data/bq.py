@@ -171,11 +171,30 @@ class Client:
               job_config: A config for the import
 
         """
+        try:
+            # Start the load job
+            job = self.bigquery_client.load_table_from_uri(
+                gs_uris, table_ref, job_config=job_config
+            )
 
-        job = self.bigquery_client.load_table_from_uri(
-            source_uris=gs_uris, destination=table_ref, job_config=job_config)
+            # Wait for the job to complete
+            job.result()
 
-        job.result()
+            # Check for job errors
+            if job.errors:
+                logs.client.logger.error(f"load_table_from_uri: Errors found during the load: {job.errors}")
+
+                # Capture error records if available
+                for error in job.errors:
+                    logs.client.logger.info(f"load_table_from_uri: Error: {error['message']}")
+                return False, job.errors
+            else:
+                logs.client.logger.info("load_table_from_uri: Job completed successfully without errors.")
+                return True, None
+
+        except Exception as e:
+            logs.client.logger.error(f"load_table_from_uri: Unexpected error occurred: {e}")
+            return False, str(e)
 
     def load_table_from_dataframe(
         self, data_df: pd.DataFrame, table: str, write_preference: str, auto_detect: bool = True,

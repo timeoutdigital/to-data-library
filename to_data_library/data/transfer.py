@@ -1,5 +1,7 @@
 import os
 import re
+import sys
+from typing import List
 
 from google.api_core import exceptions
 from google.cloud import bigquery, storage
@@ -68,8 +70,10 @@ class Client:
 
         return ['gs://{}/{}'.format(bucket_name, blob.name) for blob in blobs]
 
-    def gs_to_bq(self, gs_uris, table, write_preference, auto_detect=True, skip_leading_rows=True, separator=',',
-                 schema=(), partition_date=None, max_bad_records=0):
+    def gs_to_bq(self, gs_uris, table, write_preference, auto_detect: bool = True, skip_leading_rows: bool = True,
+                 separator: str = None, source_format: str = 'CSV',
+                 schema: List[bigquery.SchemaField] = None, partition_date: str = None,
+                 max_bad_records: int = 0):
         """Load file from Google Storage into the BigQuery table
 
         Args:
@@ -88,10 +92,13 @@ class Client:
             skip_leading_rows (boolean, Optional):  True to skip the first row of the file otherwise False. Defaults to
               :data:`True`.
             separator (str, Optional): The separator. Defaults to :data:`,`
+            source_format (str, Optional): The file format (CSV, JSON, PARQUET or AVRO)
+            compressed (boolean, Optional): True if the file is compressed, defaults ot False
             schema (tuple): The BigQuery table schema. For example: ``(('first_field','STRING'),('second_field',
               'STRING'))``
             partition_date (str, Optional): The ingestion date for partitioned BigQuery table. For example: ``20210101``
             . The partition field name will be __PARTITIONTIME.
+            schema (List[bigquery.SchemaField], Optional): A List of SchemaFields.
             max_bad_records (int, Optional): The maximum number of rows with errors. Defaults to :data:0
 
         Examples:
@@ -106,19 +113,38 @@ class Client:
         table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
 
         job_config = bigquery.LoadJobConfig(
-            source_format=bigquery.SourceFormat.CSV,
-            skip_leading_rows=1 if skip_leading_rows else 0,
             autodetect=auto_detect,
-            field_delimiter=separator,
             write_disposition=get_bq_write_disposition(write_preference),
             allow_quoted_newlines=True,
             max_bad_records=max_bad_records
         )
 
+        if skip_leading_rows:
+            job_config.skip_leading_rows = 1
+
         if partition_date:
             job_config.time_partitioning = bigquery.TimePartitioning(
                 type_=bigquery.TimePartitioningType.DAY)
             table_id += '${}'.format(partition_date)
+
+        if separator:
+            job_config.field_delimiter = separator
+
+        # Define the source format
+        if source_format == 'CSV':
+            job_config.source_format = bigquery.SourceFormat.CSV
+        elif source_format == 'JSON':
+            job_config.source_format = bigquery.SourceFormat.NEWLINE_DELIMITED_JSON
+        elif source_format == 'AVRO':
+            job_config.source_format = bigquery.SourceFormat.AVRO
+        elif source_format == 'PARQUET':
+            job_config.source_format = bigquery.SourceFormat.PARQUET
+        else:
+            logs.client.logger.error(f"Invalid SourceFormat entered: {source_format}")
+            sys.exit(1)
+
+        if schema:
+            job_config.schema = schema
 
         bq_client = bq.Client(project,
                               impersonated_credentials=self.impersonated_credentials)
@@ -128,17 +154,18 @@ class Client:
             logs.client.logger.info(
                 'Dataset {} Already exists'.format(dataset_id))
 
-        if schema:
-            job_config.schema = [bigquery.SchemaField(
-                schema_field[0], schema_field[1]) for schema_field in schema]
-
-        bigquery_client = bigquery.Client(project=self.project)
         logs.client.logger.info(
             'Loading BigQuery table {} from {}'.format(table, gs_uris))
-        job = bigquery_client.load_table_from_uri(
-            gs_uris, table_ref, job_config=job_config)
 
-        job.result()
+        try:
+            # Start the load job
+            bq_client.load_table_from_uris(
+                gs_uris, table_ref, job_config=job_config
+            )
+
+        except Exception as e:
+            logs.client.logger.error(f"Unexpected error occurred: {e}")
+            return False, str(e)
 
     def gs_parquet_to_bq(self, gs_uris, table, write_preference, auto_detect=True,
                          schema=(), partition_date=None, max_bad_records=0):
@@ -407,6 +434,7 @@ class Client:
 
         pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix_name)
         for page in pages:
+            print(f"page: {page}")
             for obj in page['Contents']:
                 key = obj['Key']
                 if not key.endswith('/') and re.match(regex, key):

@@ -107,6 +107,8 @@ markupsafe==2.1.2
     #   werkzeug
 moto[s3]==4.2.0
     # via -r requirements.in
+ndjson==0.3.1
+    # via -r requirements.in
 nodeenv==1.8.0
     # via pre-commit
 numpy==1.26.0

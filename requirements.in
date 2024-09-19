@@ -6,6 +6,7 @@ google-cloud-storage
 Jinja2
 markupsafe
 moto[s3]
+ndjson
 oauth2client
 pandas
 paramiko
