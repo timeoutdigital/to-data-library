@@ -162,6 +162,18 @@ class Client:
 
         job.result()
 
+        # Check for job errors
+        if job.errors:
+            logs.client.logger.error(f"load_table_from_uri: Errors found during the load: {job.errors}")
+
+            # Capture error records if available
+            for error in job.errors:
+                logs.client.logger.info(f"load_table_from_uri: Error: {error['message']} for file: {source_file}")
+            return False, job.errors
+        else:
+            logs.client.logger.info("load_table_from_uri: Job completed successfully without errors.")
+            return True, None
+
     def load_table_from_uris(self, gs_uris, table_ref, job_config):
 
         """Import into BigQuery table from a URI

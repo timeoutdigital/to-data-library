@@ -78,6 +78,7 @@ class Client:
                  source_format: str = 'CSV',
                  schema: List[bigquery.SchemaField] = None,
                  partition_date: str = None,
+                 partition_field: str = None,
                  max_bad_records: int = 0):
         """Load file from Google Storage into the BigQuery table
 
@@ -101,8 +102,11 @@ class Client:
             compressed (boolean, Optional): True if the file is compressed, defaults ot False
             schema (tuple): The BigQuery table schema. For example: ``(('first_field','STRING'),('second_field',
               'STRING'))``
-            partition_date (str, Optional): The ingestion date for partitioned BigQuery table. For example: ``20210101``
-            . The partition field name will be __PARTITIONTIME.
+            partition_date (str, Optional): The ingestion date for partitioned destination table. For example:
+              ``20210101``. The partition field name will be __PARTITIONTIME
+            partition_field (str, Optional): The field on which the destination table is partitioned. The field must be
+              a top-level TIMESTAMP or DATE field. Must be used in conjuction with partitioned_date.
+              Here partitioned_date will be used to update or alter the table using the partition
             schema (List[bigquery.SchemaField], Optional): A List of SchemaFields.
             max_bad_records (int, Optional): The maximum number of rows with errors. Defaults to :data:0
 
@@ -115,7 +119,6 @@ class Client:
         project, dataset_id, table_id = table.split('.')
         dataset_ref = bigquery.DatasetReference(
             project=project, dataset_id=dataset_id)
-        table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
 
         job_config = bigquery.LoadJobConfig(
             autodetect=auto_detect,
@@ -127,10 +130,18 @@ class Client:
         if skip_leading_rows:
             job_config.skip_leading_rows = 1
 
-        if partition_date:
-            job_config.time_partitioning = bigquery.TimePartitioning(
-                type_=bigquery.TimePartitioningType.DAY)
+        if (partition_date and not partition_field):
+            job_config.time_partitioning = bigquery.TimePartitioning(type_=bigquery.TimePartitioningType.DAY)
             table_id += '${}'.format(partition_date)
+        elif (partition_date and partition_field):
+            job_config.time_partitioning = bigquery.TimePartitioning(
+                type_=bigquery.TimePartitioningType.DAY, field=partition_field)
+            table_id += '${}'.format(partition_date)
+        elif (partition_field and not partition_date and write_preference == 'truncate'):
+            logs.client.logger.error("Error if partition_field is supplied partitioned_date must also be supplied")
+            sys.exit(1)
+
+        table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
 
         if separator:
             job_config.field_delimiter = separator
