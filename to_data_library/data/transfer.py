@@ -162,6 +162,25 @@ class Client:
         if schema:
             job_config.schema = schema
 
+        if separator:
+            job_config.field_delimiter = separator
+
+        # Define the source format
+        if source_format == 'CSV':
+            job_config.source_format = bigquery.SourceFormat.CSV
+        elif source_format == 'JSON':
+            job_config.source_format = bigquery.SourceFormat.NEWLINE_DELIMITED_JSON
+        elif source_format == 'AVRO':
+            job_config.source_format = bigquery.SourceFormat.AVRO
+        elif source_format == 'PARQUET':
+            job_config.source_format = bigquery.SourceFormat.PARQUET
+        else:
+            logs.client.logger.error(f"Invalid SourceFormat entered: {source_format}")
+            sys.exit(1)
+
+        if schema:
+            job_config.schema = schema
+
         bq_client = bq.Client(project,
                               impersonated_credentials=self.impersonated_credentials)
         try:
