@@ -178,9 +178,6 @@ class Client:
             logs.client.logger.error(f"Invalid SourceFormat entered: {source_format}")
             sys.exit(1)
 
-        if schema:
-            job_config.schema = schema
-
         bq_client = bq.Client(project,
                               impersonated_credentials=self.impersonated_credentials)
         try:

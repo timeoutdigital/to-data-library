@@ -1,6 +1,6 @@
 import gzip
 import json
-from io import BytesIO
+from io import BytesIO, TextIOWrapper
 
 import ndjson
 from google.cloud import storage
@@ -91,37 +91,37 @@ class Client:
         self.storage_client.create_bucket(bucket_name, location='EU')
 
     def convert_json_array_to_ndjson(self, bucket_name, input_gz_file, output_file):
-        """Converts a gzip json file to ndjson
+        """Converts a gzip json file to ndjson with minimal memory and storage usage.
 
         Args:
             bucket_name (str): the bucket name
             input_gz_file (str): the path and name of the GZIP file to be processed (format: gs://path/to/file.gz)
             output_file (str): the path and name of the file to be created (format: gs://path/to/file.ndjson)
         """
-        # Rename the bucket and file names for the API to work
         bucket_rename = bucket_name.replace('gs://', '')
         input_gz_file_rename = input_gz_file[len(bucket_name)+1:]
         output_file_rename = output_file[len(bucket_name)+1:]
 
-        # Get the GCS bucket and blobs
         bucket = self.storage_client.bucket(bucket_rename)
         input_blob = bucket.blob(input_gz_file_rename)
         target_blob = bucket.blob(output_file_rename)
 
-        #  Delete the converted file if it already exists
         if target_blob.exists():
             target_blob.delete()
 
-        # Download the gzipped JSON file from GCS
-        compressed_data = BytesIO(input_blob.download_as_bytes())
+        # Stream reading from the gzipped input file
+        input_stream = BytesIO(input_blob.download_as_bytes())
+        with gzip.GzipFile(fileobj=input_stream, mode='rb') as gz_file:
+            # Wrap the gzipped file object in a text wrapper to read JSON line by line
+            with TextIOWrapper(gz_file, encoding='utf-8') as text_file:
+                # Use a generator to convert each JSON object to NDJSON and stream the output
+                def json_to_ndjson_stream():
+                    json_data = json.load(text_file)
+                    for json_obj in json_data:
+                        yield (ndjson.dumps([json_obj]) + '\n').encode('utf-8')
 
-        # Decompress the gzip data and read the JSON array
-        with gzip.GzipFile(fileobj=compressed_data, mode='rb') as f:
-            json_data = json.load(f)
+                # Upload the output to GCS in streaming mode
+                target_blob.upload_from_file(BytesIO(b''.join(json_to_ndjson_stream())),
+                                             content_type='application/x-ndjson')
 
-        # Convert the list of JSON objects to NDJSON format
-        ndjson_data = ndjson.dumps(json_data)
-
-        # Upload the new NDJSON file to GCS
-        target_blob.upload_from_string(ndjson_data, content_type='application/json')
         logs.client.logger.info(f"Converted and uploaded NDJSON file to: {output_file}")
