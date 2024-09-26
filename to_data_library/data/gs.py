@@ -1,6 +1,5 @@
 import gzip
 import json
-
 from io import BytesIO, TextIOWrapper
 
 import ndjson
