@@ -19,4 +19,5 @@ phases:
     on-failure: ABORT
     commands:
     - SKIP=no-commit-to-branch pre-commit run --all-files
-    - python -m unittest
+    - coverage run -m unittest
+    - coverage report --fail-under=58
