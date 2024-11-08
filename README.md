@@ -34,8 +34,21 @@ export PROJECT=to-data-platform-dev
 etc
 ```
 
-- run unit tests
+- run unit tests with coverage
 
 ```
-python -m unittest
+coverage run -m unittest
+```
+
+- view coverage report
+
+```
+coverage report
+```
+
+- PR tests will fail if coverage is lower that value defined in `devops/pr-buildspec.yml`
+
+```
+grep fail-under devops/pr-buildspec.yml
+    - coverage report --fail-under=58
 ```
