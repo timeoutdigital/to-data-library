@@ -1,4 +1,5 @@
 boto3
+coverage
 delegator.py
 google-api-python-client
 google-cloud-bigquery
