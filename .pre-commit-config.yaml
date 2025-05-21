@@ -26,3 +26,8 @@ repos:
     - flake8-comprehensions
     - flake8-tidy-imports
     - flake8-typing-imports
+- repo: https://github.com/charliermarsh/ruff-pre-commit
+  rev: v0.11.10
+  hooks:
+  - id: ruff
+    args: [--fix]
