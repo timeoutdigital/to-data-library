@@ -24,15 +24,22 @@ class Client:
 
     @staticmethod
     def validate_schema(schema):
-        VALID_BQ_TYPES = {"STRING", "BYTES", "INTEGER", "INT64", "FLOAT", "FLOAT64", "NUMERIC", "BIGNUMERIC", "BOOLEAN", "BOOL", "TIMESTAMP", "DATE", "TIME", "DATETIME", "GEOGRAPHY", "RECORD", "STRUCT"}
+        VALID_BQ_TYPES = {
+            "STRING", "BYTES", "INTEGER", "INT64", "FLOAT", "FLOAT64", "NUMERIC", "BIGNUMERIC",
+            "BOOLEAN", "BOOL", "TIMESTAMP", "DATE", "TIME", "DATETIME", "GEOGRAPHY", "RECORD", "STRUCT"
+        }
         for field in schema:
             if not isinstance(field, (list, tuple)) or len(field) < 2:
-                raise ValueError(f"Schema field {field} is not a tuple of (name, type)")
+                raise ValueError(
+                    f"Schema field {field} is not a tuple of (name, type)"
+                )
             name, type_ = field[0], field[1]
             if not isinstance(name, str):
                 raise ValueError(f"Field name {name} is not a string")
             if type_.upper() not in VALID_BQ_TYPES:
-                raise ValueError(f"Field type {type_} is not a valid BigQuery type")
+                raise ValueError(
+                    f"Field type {type_} is not a valid BigQuery type"
+                )
 
     def bq_to_gs(self, table, bucket_name, separator=',', print_header=True, compress=False):
         """Extract BigQuery table into the GoogleStorage
@@ -61,8 +68,9 @@ class Client:
         table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
 
         bq_client = bigquery.Client(project=self.project)
-        logs.client.logger.info('Extracting from {table} to gs://{bucket_name}/{table_id}_*'.format(
-            bucket_name=bucket_name, table_id=table_id, table=table)
+        logs.client.logger.info(
+            'Extracting from {table} to gs://{bucket_name}/{table_id}_*'.format(
+                bucket_name=bucket_name, table_id=table_id, table=table)
         )
         extract_job = bq_client.extract_table(
             source=table_ref,
@@ -143,14 +151,16 @@ class Client:
             job_config.skip_leading_rows = 1
 
         if (partition_date and not partition_field):
-            job_config.time_partitioning = bigquery.TimePartitioning(type_=bigquery.TimePartitioningType.DAY)
+            job_config.time_partitioning = bigquery.TimePartitioning(
+                type_=bigquery.TimePartitioningType.DAY)
             table_id += '${}'.format(partition_date)
         elif (partition_date and partition_field):
             job_config.time_partitioning = bigquery.TimePartitioning(
                 type_=bigquery.TimePartitioningType.DAY, field=partition_field)
             table_id += '${}'.format(partition_date)
         elif (partition_field and not partition_date and write_preference == 'truncate'):
-            logs.client.logger.error("Error if partition_field is supplied partitioned_date must also be supplied")
+            logs.client.logger.error(
+                "Error if partition_field is supplied partitioned_date must also be supplied")
             sys.exit(1)
 
         table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
@@ -168,7 +178,8 @@ class Client:
         elif source_format == 'PARQUET':
             job_config.source_format = bigquery.SourceFormat.PARQUET
         else:
-            logs.client.logger.error(f"Invalid SourceFormat entered: {source_format}")
+            logs.client.logger.error(
+                f"Invalid SourceFormat entered: {source_format}")
             sys.exit(1)
 
         if schema:
@@ -290,8 +301,7 @@ class Client:
                                               ``'truncate'``: Erases all existing data in a table before writing the
                                                 new data.
             ftp_filepath (str): The path to the file to download.
-            separator (:obj:`str`, Optional): The separator. Defaults to :data:`,`.
-            skip_leading_rows (boolean, Optional):  True to skip the first row of the file otherwise False. Defaults to
+            separator (:obj:`str`, Optional): The separator. Defaults to :data:`,`.\n            skip_leading_rows (boolean, Optional):  True to skip the first row of the file otherwise False. Defaults to
               :data:`True`.
             bq_table_schema (tuple, Optional): The BigQuery table schema. For example: ``(('first_field','STRING'),
             ('second_field','STRING'))``
@@ -337,8 +347,7 @@ class Client:
             bq_table (str): The BigQuery table. For example: ``my-project-id.my-dataset.my-table``
             ftp_connection_string (str): The FTP connection string in the format {username}:{password}@{host}:{port}
             ftp_filepath (str): The path to the file to download.
-            separator (:obj:`str`, optional): The separator. Defaults to :data:`,`.
-            print_header (boolean, Optional):  True to write header for the CSV file, otherwise False. Defaults to :
+            separator (:obj:`str`, optional): The separator. Defaults to :data:`,`.\n            print_header (boolean, Optional):  True to write header for the CSV file, otherwise False. Defaults to :
             data:`True`.
 
         Examples:
@@ -430,10 +439,11 @@ class Client:
         if not wildcard:
             wildcard = '.*'
 
-        s3_files = self._get_keys_in_s3_bucket(aws_session=aws_session,
-                                               bucket_name=s3_bucket_name,
-                                               prefix_name=s3_object_name,
-                                               wildcard=wildcard)
+        s3_files = self._get_keys_in_s3_bucket(
+            aws_session=aws_session,
+            bucket_name=s3_bucket_name,
+            prefix_name=s3_object_name,
+            wildcard=wildcard)
 
         logs.client.logger.info(f'Found {str(s3_files)} files in S3')
 
@@ -455,9 +465,11 @@ class Client:
             # Try to upload file from local to GCS.
             try:
                 gs_client.upload(local_file, gs_bucket_name, gs_file_name)
-                logs.client.logger.info(f'Successfully uploaded {local_file} to {gs_bucket_name}/{gs_file_name}')
+                logs.client.logger.info(
+                    f'Successfully uploaded {local_file} to {gs_bucket_name}/{gs_file_name}')
             except Exception as e:
-                logs.client.logger.error(f"Failed to upload {local_file} to {gs_bucket_name}/{gs_file_name}: {e}")
+                logs.client.logger.error(
+                    f"Failed to upload {local_file} to {gs_bucket_name}/{gs_file_name}: {e}")
             finally:
                 if os.path.exists(local_file):
                     os.remove(local_file)
@@ -549,13 +561,16 @@ class Client:
 
         # Partitioning logic (same as gs_to_bq)
         if partition_date and not partition_field:
-            job_config.time_partitioning = bigquery.TimePartitioning(type_=bigquery.TimePartitioningType.DAY)
+            job_config.time_partitioning = bigquery.TimePartitioning(
+                type_=bigquery.TimePartitioningType.DAY)
             table_id += f'${partition_date}'
         elif partition_date and partition_field:
-            job_config.time_partitioning = bigquery.TimePartitioning(type_=bigquery.TimePartitioningType.DAY, field=partition_field)
+            job_config.time_partitioning = bigquery.TimePartitioning(
+                type_=bigquery.TimePartitioningType.DAY, field=partition_field)
             table_id += f'${partition_date}'
         elif partition_field and not partition_date and write_preference == 'truncate':
-            logs.client.logger.error("Error: if partition_field is supplied, partition_date must also be supplied")
+            logs.client.logger.error(
+                "Error: if partition_field is supplied, partition_date must also be supplied")
             sys.exit(1)
 
         table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
@@ -573,7 +588,8 @@ class Client:
         elif source_format == 'PARQUET':
             job_config.source_format = bigquery.SourceFormat.PARQUET
         else:
-            logs.client.logger.error(f"Invalid SourceFormat entered: {source_format}")
+            logs.client.logger.error(
+                f"Invalid SourceFormat entered: {source_format}")
             sys.exit(1)
 
         # Schema as tuple/list of tuples
