@@ -22,6 +22,18 @@ class Client:
         self.project = project
         self.impersonated_credentials = impersonated_credentials
 
+    @staticmethod
+    def validate_schema(schema):
+        VALID_BQ_TYPES = {"STRING", "BYTES", "INTEGER", "INT64", "FLOAT", "FLOAT64", "NUMERIC", "BIGNUMERIC", "BOOLEAN", "BOOL", "TIMESTAMP", "DATE", "TIME", "DATETIME", "GEOGRAPHY", "RECORD", "STRUCT"}
+        for field in schema:
+            if not isinstance(field, (list, tuple)) or len(field) < 2:
+                raise ValueError(f"Schema field {field} is not a tuple of (name, type)")
+            name, type_ = field[0], field[1]
+            if not isinstance(name, str):
+                raise ValueError(f"Field name {name} is not a string")
+            if type_.upper() not in VALID_BQ_TYPES:
+                raise ValueError(f"Field type {type_} is not a valid BigQuery type")
+
     def bq_to_gs(self, table, bucket_name, separator=',', print_header=True, compress=False):
         """Extract BigQuery table into the GoogleStorage
 
@@ -160,7 +172,8 @@ class Client:
             sys.exit(1)
 
         if schema:
-            job_config.schema = schema
+            self.validate_schema(schema)
+            job_config.schema = [bigquery.SchemaField(field[0], field[1]) for field in schema]
 
         if separator:
             job_config.field_delimiter = separator
@@ -254,6 +267,7 @@ class Client:
                 'Dataset {} Already exists'.format(dataset_id))
 
         if schema:
+            self.validate_schema(schema)
             job_config.schema = [bigquery.SchemaField(
                 schema_field[0], schema_field[1]) for schema_field in schema]
 
@@ -298,6 +312,10 @@ class Client:
         # download the ftp file
         ftp_client = ftp.Client(connection_string=ftp_connection_string)
         local_file = ftp_client.download_file(ftp_filepath)
+
+        # schema validation if provided
+        if bq_table_schema:
+            self.validate_schema(bq_table_schema)
 
         # upload the ftp file into BigQuery
         bq_client = bq.Client(project=self.project,
@@ -476,7 +494,8 @@ class Client:
 
     def s3_to_bq(self, aws_session, bucket_name, object_name,
                  bq_table, write_preference, auto_detect=True, separator=',',
-                 skip_leading_rows=True, schema=None, partition_date=None):
+                 skip_leading_rows=True, schema=None, partition_date=None, partition_field=None,
+                 source_format='CSV', max_bad_records=0):
         """
         Exports S3 file to BigQuery table
 
@@ -486,20 +505,20 @@ class Client:
           object_name (str): s3 object name to copy
           bq_table (str): The BigQuery table. For example: ``my-project-id.my-dataset.my-table``
           write_preference (str): The option to specify what action to take when you load data from a source file.
-            Value can be on of
-                                            ``'empty'``: Writes the data only if the table is empty.
-                                            ``'append'``: Appends the data to the end of the table.
-                                            ``'truncate'``: Erases all existing data in a table before writing the new
-                                            data.
+            Value can be one of
+                ``'empty'``: Writes the data only if the table is empty.
+                ``'append'``: Appends the data to the end of the table.
+                ``'truncate'``: Erases all existing data in a table before writing the new data.
           auto_detect (boolean, Optional):  True if the schema should automatically be detected otherwise False.
             Defaults to `True`.
           separator (str, optional): The separator. Defaults to `,`.
           skip_leading_rows (boolean, Optional):  True to skip the first row of the file otherwise False. Defaults to
             `True`.
-          schema (list of tuples, optional): The BigQuery table schema. For example: ``[('first_field','STRING'),
-          ('second_field', 'STRING')]``
+          schema (tuple, optional): The BigQuery table schema. For example: ``(('first_field','STRING'),('second_field', 'STRING'))``
           partition_date (str, Optional): The ingestion date for partitioned BigQuery table. For example: ``20210101``.
-          The partition field name will be __PARTITIONTIME
+          partition_field (str, Optional): The field on which the destination table is partitioned. The field must be a top-level TIMESTAMP or DATE field. Must be used in conjunction with partition_date.
+          source_format (str, Optional): The file format (CSV, JSON, PARQUET or AVRO). Defaults to 'CSV'.
+          max_bad_records (int, Optional): The maximum number of rows with errors. Defaults to 0.
 
         Example:
             >>> from to_data_library.data import transfer
@@ -512,19 +531,72 @@ class Client:
 
         # Download S3 file to local
         s3_client = s3.Client(aws_session)
-        s3_client.download(bucket_name, object_name,
-                           os.path.join('/tmp/', object_name))
+        local_file = os.path.join('/tmp/', object_name)
+        s3_client.download(bucket_name, object_name, local_file)
 
-        logs.client.logger.info('Loading S3 file to BigQuery table')
-        bq_client = bq.Client(bq_table.split('.')[0])
-        bq_client.upload_table(
-            file_path=os.path.join('/tmp/', object_name),
-            table=bq_table,
-            write_preference=write_preference,
-            separator=separator,
-            auto_detect=auto_detect,
-            skip_leading_rows=skip_leading_rows,
-            schema=schema,
-            partition_date=partition_date
+        project, dataset_id, table_id = bq_table.split('.')
+        dataset_ref = bigquery.DatasetReference(project=project, dataset_id=dataset_id)
+
+        job_config = bigquery.LoadJobConfig(
+            autodetect=auto_detect,
+            write_disposition=get_bq_write_disposition(write_preference),
+            allow_quoted_newlines=True,
+            max_bad_records=max_bad_records
         )
+
+        if skip_leading_rows:
+            job_config.skip_leading_rows = 1
+
+        # Partitioning logic (same as gs_to_bq)
+        if partition_date and not partition_field:
+            job_config.time_partitioning = bigquery.TimePartitioning(type_=bigquery.TimePartitioningType.DAY)
+            table_id += f'${partition_date}'
+        elif partition_date and partition_field:
+            job_config.time_partitioning = bigquery.TimePartitioning(type_=bigquery.TimePartitioningType.DAY, field=partition_field)
+            table_id += f'${partition_date}'
+        elif partition_field and not partition_date and write_preference == 'truncate':
+            logs.client.logger.error("Error: if partition_field is supplied, partition_date must also be supplied")
+            sys.exit(1)
+
+        table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
+
+        if separator:
+            job_config.field_delimiter = separator
+
+        # Source format
+        if source_format == 'CSV':
+            job_config.source_format = bigquery.SourceFormat.CSV
+        elif source_format == 'JSON':
+            job_config.source_format = bigquery.SourceFormat.NEWLINE_DELIMITED_JSON
+        elif source_format == 'AVRO':
+            job_config.source_format = bigquery.SourceFormat.AVRO
+        elif source_format == 'PARQUET':
+            job_config.source_format = bigquery.SourceFormat.PARQUET
+        else:
+            logs.client.logger.error(f"Invalid SourceFormat entered: {source_format}")
+            sys.exit(1)
+
+        # Schema as tuple/list of tuples
+        if schema:
+            self.validate_schema(schema)
+            job_config.schema = [bigquery.SchemaField(field[0], field[1]) for field in schema]
+
+        bq_client = bq.Client(project, impersonated_credentials=self.impersonated_credentials)
+        try:
+            bq_client.create_dataset(dataset_id)
+        except exceptions.Conflict:
+            logs.client.logger.info(f'Dataset {dataset_id} Already exists')
+
+        logs.client.logger.info(f'Loading BigQuery table {bq_table} from {local_file}')
+        try:
+            bq_client.load_table_from_uris(
+                [local_file], table_ref, job_config=job_config
+            )
+        except Exception as e:
+            logs.client.logger.error(f"Unexpected error occurred: {e}")
+            return False, str(e)
+        finally:
+            if os.path.exists(local_file):
+                os.remove(local_file)
+                logs.client.logger.info(f'Deleted local file {local_file}')
         logs.client.logger.info('Loading completed')
