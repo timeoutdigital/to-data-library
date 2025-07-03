@@ -484,7 +484,7 @@ class Client:
         pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix_name)
         for page in pages:
             print(f"page: {page}")
-            for obj in page['Contents']:
+            for obj in page.get('Contents', []):
                 key = obj['Key']
                 if not key.endswith('/') and re.match(regex, key):
                     s3_files.append(obj.get('Key'))

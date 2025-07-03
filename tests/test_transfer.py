@@ -241,3 +241,103 @@ def test_gs_to_bq(self, mock_default, mock_loadjobconfig,
             self.assertEqual(job_config.source_format, 'CSV')
             self.assertEqual(job_config.field_delimiter, '|')
             self.assertEqual(job_config.max_bad_records, 5)
+
+
+class TestTransferEdgeCases(unittest.TestCase):
+    def setUp(self):
+        self.client = transfer.Client('fake_project')
+
+    def test_gs_to_bq_invalid_source_format(self):
+        with patch('google.cloud.bigquery.Client'), \
+             patch('google.cloud.bigquery.DatasetReference'), \
+             patch('google.cloud.bigquery.TableReference'), \
+             patch('google.cloud.bigquery.LoadJobConfig'), \
+             patch.object(transfer.logs.client.logger, 'error') as mock_error:
+            with self.assertRaises(SystemExit):
+                self.client.gs_to_bq(
+                    gs_uris='gs://bucket/file.unknown',
+                    table='p.d.t',
+                    write_preference='truncate',
+                    source_format='NOT_A_FORMAT'
+                )
+            mock_error.assert_called_with('Invalid SourceFormat entered: NOT_A_FORMAT')
+
+    def test_gs_to_bq_partition_field_without_date(self):
+        with patch('google.cloud.bigquery.Client'), \
+             patch('google.cloud.bigquery.DatasetReference'), \
+             patch('google.cloud.bigquery.TableReference'), \
+             patch('google.cloud.bigquery.LoadJobConfig'), \
+             patch.object(transfer.logs.client.logger, 'error') as mock_error:
+            with self.assertRaises(SystemExit):
+                self.client.gs_to_bq(
+                    gs_uris='gs://bucket/file.csv',
+                    table='p.d.t',
+                    write_preference='truncate',
+                    partition_field='field1'
+                )
+            mock_error.assert_called()
+
+    def test_s3_to_bq_invalid_source_format(self):
+        with patch('to_data_library.data.s3.Client'), \
+             patch('to_data_library.data.bq.Client'), \
+             patch('os.path.exists', return_value=True), \
+             patch('os.remove'), \
+             patch.object(transfer.logs.client.logger, 'error') as mock_error:
+            with self.assertRaises(SystemExit):
+                self.client.s3_to_bq(
+                    aws_session=Mock(),
+                    bucket_name='bucket',
+                    object_name='file.csv',
+                    bq_table='p.d.t',
+                    write_preference='truncate',
+                    source_format='NOT_A_FORMAT'
+                )
+            mock_error.assert_called_with('Invalid SourceFormat entered: NOT_A_FORMAT')
+
+    def test_s3_to_bq_partition_field_without_date(self):
+        with patch('to_data_library.data.s3.Client'), \
+             patch('to_data_library.data.bq.Client'), \
+             patch('os.path.exists', return_value=True), \
+             patch('os.remove'), \
+             patch.object(transfer.logs.client.logger, 'error') as mock_error:
+            with self.assertRaises(SystemExit):
+                self.client.s3_to_bq(
+                    aws_session=Mock(),
+                    bucket_name='bucket',
+                    object_name='file.csv',
+                    bq_table='p.d.t',
+                    write_preference='truncate',
+                    partition_field='field1'
+                )
+            mock_error.assert_called()
+
+    def test_s3_to_gs_cleanup_and_logging(self):
+        with patch('to_data_library.data.s3.Client') as mock_s3, \
+             patch('to_data_library.data.gs.Client') as mock_gs, \
+             patch('os.remove') as mock_remove, \
+             patch('os.path.exists', return_value=True), \
+             patch.object(transfer.logs.client.logger, 'info') as mock_info:
+            mock_s3.return_value.download.return_value = '/tmp/file.csv'
+            mock_gs.return_value.upload.return_value = None
+            # Simulate one file found
+            with patch.object(self.client, '_get_keys_in_s3_bucket', return_value=['file.csv']):
+                self.client.s3_to_gs(
+                    aws_session=Mock(),
+                    s3_bucket_name='bucket',
+                    s3_object_name='file.csv',
+                    gs_bucket_name='gs-bucket',
+                )
+                mock_remove.assert_called_once_with('/tmp/file.csv')
+                mock_info.assert_any_call('Deleted local file /tmp/file.csv')
+
+    def test_get_keys_in_s3_bucket_empty_and_missing_contents(self):
+        # Empty pages
+        mock_aws_session = Mock()
+        mock_aws_session.client.return_value.get_paginator.return_value.paginate.return_value = []
+        res = self.client._get_keys_in_s3_bucket(mock_aws_session, 'bucket', 'prefix')
+        self.assertEqual(res, [])
+        # Page with no 'Contents'
+        mock_aws_session.client.return_value.get_paginator.return_value.paginate.return_value = [{'NoContents': True}]
+        with patch('builtins.print'):
+            res = self.client._get_keys_in_s3_bucket(mock_aws_session, 'bucket', 'prefix')
+        self.assertEqual(res, [])
