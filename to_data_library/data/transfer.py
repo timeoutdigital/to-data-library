@@ -285,12 +285,14 @@ class Client:
                                               ``'truncate'``: Erases all existing data in a table before writing the
                                                 new data.
             ftp_filepath (str): The path to the file to download.
-            separator (:obj:`str`, Optional): The separator. Defaults to :data:`,`.\n            skip_leading_rows (boolean, Optional):  True to skip the first row of the file otherwise False. Defaults to
-              :data:`True`.
+            separator (:obj:`str`, Optional): The separator. Defaults to :data:`,`.\n            
+            skip_leading_rows (boolean, Optional): True to skip the first row of the file otherwise False. 
+                Defaults to :data:`True`.
             bq_table_schema (tuple, Optional): The BigQuery table schema. For example: ``(('first_field','STRING'),
             ('second_field','STRING'))``
-            partition_date (str, Optional): The ingestion date for partitioned BigQuery table. For example: ``20210101``
-            . The partition field name will be __PARTITIONTIME
+            partition_date (str, Optional): The ingestion date for partitioned BigQuery table. 
+                For example: ``20210101``. 
+            The partition field name will be __PARTITIONTIME
 
         Examples:
             >>> from to_data_library.data import transfer
@@ -331,8 +333,9 @@ class Client:
             bq_table (str): The BigQuery table. For example: ``my-project-id.my-dataset.my-table``
             ftp_connection_string (str): The FTP connection string in the format {username}:{password}@{host}:{port}
             ftp_filepath (str): The path to the file to download.
-            separator (:obj:`str`, optional): The separator. Defaults to :data:`,`.\n            print_header (boolean, Optional):  True to write header for the CSV file, otherwise False. Defaults to :
-            data:`True`.
+            separator (:obj:`str`, optional): The separator. Defaults to :data:`,`.\n            
+            print_header (boolean, Optional):  True to write header for the CSV file, otherwise False. 
+            Defaults to : data:`True`.
 
         Examples:
             >>> from to_data_library.data import transfer
@@ -510,9 +513,11 @@ class Client:
           separator (str, optional): The separator. Defaults to `,`.
           skip_leading_rows (boolean, Optional):  True to skip the first row of the file otherwise False. Defaults to
             `True`.
-          schema (tuple, optional): The BigQuery table schema. For example: ``(('first_field','STRING'),('second_field', 'STRING'))``
+          schema (tuple, optional): The BigQuery table schema. For example: ``(('first_field','STRING'),
+          ('second_field', 'STRING'))``
           partition_date (str, Optional): The ingestion date for partitioned BigQuery table. For example: ``20210101``.
-          partition_field (str, Optional): The field on which the destination table is partitioned. The field must be a top-level TIMESTAMP or DATE field. Must be used in conjunction with partition_date.
+          partition_field (str, Optional): The field on which the destination table is partitioned. 
+          The field must be a top-level TIMESTAMP or DATE field. Must be used in conjunction with partition_date.
           source_format (str, Optional): The file format (CSV, JSON, PARQUET or AVRO). Defaults to 'CSV'.
           max_bad_records (int, Optional): The maximum number of rows with errors. Defaults to 0.
 
