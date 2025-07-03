@@ -168,6 +168,10 @@ class Client:
         if separator:
             job_config.field_delimiter = separator
 
+        if schema:
+            self.validate_schema(schema)
+            job_config.schema = [bigquery.SchemaField(field[0], field[1]) for field in schema]
+
         # Define the source format
         if source_format == 'CSV':
             job_config.source_format = bigquery.SourceFormat.CSV
@@ -180,26 +184,6 @@ class Client:
         else:
             logs.client.logger.error(
                 f"Invalid SourceFormat entered: {source_format}")
-            sys.exit(1)
-
-        if schema:
-            self.validate_schema(schema)
-            job_config.schema = [bigquery.SchemaField(field[0], field[1]) for field in schema]
-
-        if separator:
-            job_config.field_delimiter = separator
-
-        # Define the source format
-        if source_format == 'CSV':
-            job_config.source_format = bigquery.SourceFormat.CSV
-        elif source_format == 'JSON':
-            job_config.source_format = bigquery.SourceFormat.NEWLINE_DELIMITED_JSON
-        elif source_format == 'AVRO':
-            job_config.source_format = bigquery.SourceFormat.AVRO
-        elif source_format == 'PARQUET':
-            job_config.source_format = bigquery.SourceFormat.PARQUET
-        else:
-            logs.client.logger.error(f"Invalid SourceFormat entered: {source_format}")
             sys.exit(1)
 
         bq_client = bq.Client(project,
