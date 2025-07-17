@@ -564,19 +564,19 @@ class Client:
         # Partitioning logic (same as gs_to_bq)
         if partition_date and not partition_field:
             job_config.time_partitioning = bigquery.TimePartitioning(
-                type_=bigquery.TimePartitioningType.DAY
-            )
+                    type_=bigquery.TimePartitioningType.DAY
+                )
             table_id += f'${partition_date}'
         elif partition_date and partition_field:
             job_config.time_partitioning = bigquery.TimePartitioning(
-                type_=bigquery.TimePartitioningType.DAY,
-                field=partition_field
-            )
+                    type_=bigquery.TimePartitioningType.DAY,
+                    field=partition_field
+                )
             table_id += f'${partition_date}'
         elif partition_field and not partition_date and write_preference == 'truncate':
             logs.client.logger.error(
-                "Error: if partition_field is supplied, partition_date must also be supplied"
-            )
+                    "Error: if partition_field is supplied, partition_date must also be supplied"
+                )
             raise ValueError("partition_field supplied without partition_date")
 
         table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
