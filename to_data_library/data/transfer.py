@@ -491,10 +491,24 @@ class Client:
 
         return s3_files
 
-    def s3_to_bq(self, aws_session, bucket_name, object_name,
-                bq_table, write_preference, auto_detect=True, separator=',',
-                skip_leading_rows=True, schema=None, partition_date=None, partition_field=None,
-                source_format='CSV', max_bad_records=0, gs_bucket_name=None, gs_file_name=None):
+    def s3_to_bq(
+        self,
+        aws_session,
+        bucket_name,
+        object_name,
+        bq_table,
+        write_preference,
+        auto_detect=True,
+        separator=',',
+        skip_leading_rows=True,
+        schema=None,
+        partition_date=None,
+        partition_field=None,
+        source_format='CSV',
+        max_bad_records=0,
+        gs_bucket_name=None,
+        gs_file_name=None
+    ):
 
         """
         Exports S3 file to BigQuery table via GCS staging.
