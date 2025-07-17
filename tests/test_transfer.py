@@ -278,36 +278,55 @@ class TestTransferEdgeCases(unittest.TestCase):
             mock_error.assert_called()
 
     def test_s3_to_bq_invalid_source_format(self):
+        valid_schema = [('field1', 'STRING')]
         with patch('to_data_library.data.s3.Client'), \
              patch('to_data_library.data.bq.Client'), \
+             patch('to_data_library.data.gs.Client') as mock_gs_client, \
              patch('os.path.exists', return_value=True), \
              patch('os.remove'), \
              patch.object(transfer.logs.client.logger, 'error') as mock_error:
-            with self.assertRaises(SystemExit):
+            mock_gs_client.return_value.upload.return_value = None
+            with self.assertRaises(ValueError):
                 self.client.s3_to_bq(
                     aws_session=Mock(),
                     bucket_name='bucket',
                     object_name='file.csv',
                     bq_table='p.d.t',
                     write_preference='truncate',
-                    source_format='NOT_A_FORMAT'
+                    schema=valid_schema,
+                    partition_date='20240101',
+                    partition_field='field1',
+                    source_format='NOT_A_FORMAT',
+                    separator='|',
+                    max_bad_records=5,
+                    gs_bucket_name='test-gcs-bucket',  # <-- new required argument
+                    gs_file_name='test-file.csv'       # <-- optional
                 )
             mock_error.assert_called_with('Invalid SourceFormat entered: NOT_A_FORMAT')
 
     def test_s3_to_bq_partition_field_without_date(self):
+        valid_schema = [('field1', 'STRING')]
         with patch('to_data_library.data.s3.Client'), \
              patch('to_data_library.data.bq.Client'), \
+             patch('to_data_library.data.gs.Client') as mock_gs_client, \
              patch('os.path.exists', return_value=True), \
              patch('os.remove'), \
              patch.object(transfer.logs.client.logger, 'error') as mock_error:
-            with self.assertRaises(SystemExit):
+            mock_gs_client.return_value.upload.return_value = None
+            with self.assertRaises(ValueError):
                 self.client.s3_to_bq(
                     aws_session=Mock(),
                     bucket_name='bucket',
                     object_name='file.csv',
                     bq_table='p.d.t',
                     write_preference='truncate',
-                    partition_field='field1'
+                    schema=valid_schema,
+                    partition_field='field1',
+                    source_format='CSV',
+                    separator='|',
+                    max_bad_records=5,
+                    gs_bucket_name='test-gcs-bucket',  # <-- new required argument
+                    gs_file_name='test-file.csv'       # <-- optional
                 )
             mock_error.assert_called()
 
