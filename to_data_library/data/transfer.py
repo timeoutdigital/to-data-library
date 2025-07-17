@@ -495,6 +495,7 @@ class Client:
                 bq_table, write_preference, auto_detect=True, separator=',',
                 skip_leading_rows=True, schema=None, partition_date=None, partition_field=None,
                 source_format='CSV', max_bad_records=0, gs_bucket_name=None, gs_file_name=None):
+
         """
         Exports S3 file to BigQuery table via GCS staging.
 
