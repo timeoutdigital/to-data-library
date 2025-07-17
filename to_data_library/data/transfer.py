@@ -569,9 +569,9 @@ class Client:
             table_id += f'${partition_date}'
         elif partition_date and partition_field:
             job_config.time_partitioning = bigquery.TimePartitioning(
-                type_=bigquery.TimePartitioningType.DAY,
-                field=partition_field
-            )
+                    type_=bigquery.TimePartitioningType.DAY,
+                    field=partition_field
+                )
             table_id += f'${partition_date}'
         elif partition_field and not partition_date and write_preference == 'truncate':
             logs.client.logger.error(
