@@ -15,11 +15,10 @@ class TestGS(unittest.TestCase):
     def test_download(self, mock_storage_client):
         mock_client_instance = mock_storage_client.return_value
         test_client = Client(project='fake_project')
-        
         mock_client_instance.download_blob_to_file = mock.Mock()
 
         gs_uri = 'gs://fake_bucket/fake_file.csv'
-       
+
         test_client.download(gs_uri)
 
         mock_client_instance.download_blob_to_file.assert_called_once()
@@ -40,4 +39,3 @@ class TestGS(unittest.TestCase):
 
         test_client.upload('tests/data/sample.csv', 'fake_bucket', 'new_name')
         mock_bucket.blob.assert_called_with('new_name')
-
