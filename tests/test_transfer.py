@@ -26,14 +26,13 @@ class TestTransfer(unittest.TestCase):
 
         mock_storage_client.list_blobs.assert_called_once_with('fake_bucket_name')
 
-
     @patch('google.cloud.bigquery.DatasetReference')
     @patch('google.cloud.bigquery.TableReference')
     @patch('to_data_library.data.bq.Client')
     @patch('google.cloud.bigquery.LoadJobConfig')
     @patch('to_data_library.data.bq.default')
     def test_gs_to_bq(self, mock_default, mock_loadjobconfig,
-                    mock_bq_client, mock_tablereference, mock_datasetreference):
+                        mock_bq_client, mock_tablereference, mock_datasetreference):
 
         mock_default.return_value = 'first', 'second'
 
@@ -184,10 +183,12 @@ class TestTransfer(unittest.TestCase):
         client = transfer.Client('fake_project_name')
         valid_schema = [('field1', 'STRING')]
         with patch('to_data_library.data.s3.Client') as mock_s3, \
-             patch('to_data_library.data.bq.Client') as mock_bq:
+             patch('to_data_library.data.bq.Client') as mock_bq, \
+             patch('to_data_library.data.gs.Client') as mock_gs:
             mock_s3.return_value.download.return_value = '/tmp/file.csv'
             mock_bq.return_value.create_dataset.return_value = None
             mock_bq.return_value.load_table_from_uris.return_value = None
+            mock_gs.return_value.upload.return_value = None
             # Should not raise
             client.s3_to_bq(
                 aws_session=Mock(),
@@ -217,11 +218,13 @@ class TestTransfer(unittest.TestCase):
         valid_schema = [('field1', 'STRING')]
         with patch('to_data_library.data.s3.Client') as mock_s3, \
              patch('to_data_library.data.bq.Client') as mock_bq, \
+             patch('to_data_library.data.gs.Client') as mock_gs, \
              patch('os.remove') as mock_remove, \
              patch('os.path.exists', return_value=True):
             mock_s3.return_value.download.return_value = '/tmp/file.csv'
             mock_bq.return_value.create_dataset.return_value = None
             mock_bq.return_value.load_table_from_uris.return_value = None
+            mock_gs.return_value.upload.return_value = None
 
             # Test with partition_date and partition_field, custom delimiter, source_format, max_bad_records
             client.s3_to_bq(
