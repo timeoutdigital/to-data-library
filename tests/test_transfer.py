@@ -32,7 +32,7 @@ class TestTransfer(unittest.TestCase):
     @patch('google.cloud.bigquery.LoadJobConfig')
     @patch('to_data_library.data.bq.default')
     def test_gs_to_bq(self, mock_default, mock_loadjobconfig,
-                     mock_bq_client, mock_tablereference, mock_datasetreference):
+                      mock_bq_client, mock_tablereference, mock_datasetreference):
 
         mock_default.return_value = 'first', 'second'
 
