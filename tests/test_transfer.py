@@ -111,10 +111,13 @@ class TestTransfer(unittest.TestCase):
     def test_gs_to_bq_schema_validation(self):
         client = transfer.Client('fake_project_name')
         valid_schema = [('field1', 'STRING'), ('field2', 'INTEGER')]
-        with patch('google.cloud.bigquery.Client'), \
+        with patch('to_data_library.data.bq.Client') as mock_bq_client, \
+             patch('google.cloud.bigquery.Client'), \
              patch('google.cloud.bigquery.DatasetReference'), \
              patch('google.cloud.bigquery.TableReference'), \
              patch('google.cloud.bigquery.LoadJobConfig'):
+            mock_bq_client.return_value.create_dataset.return_value = None
+            mock_bq_client.return_value.load_table_from_uris.return_value = None
             # Should not raise
             client.gs_to_bq(
                 gs_uris="gs://bucket/file.csv",
@@ -159,10 +162,13 @@ class TestTransfer(unittest.TestCase):
     def test_gs_parquet_to_bq_schema_validation(self):
         client = transfer.Client('fake_project_name')
         valid_schema = [('field1', 'STRING')]
-        with patch('google.cloud.bigquery.Client'), \
+        with patch('to_data_library.data.bq.Client') as mock_bq_client, \
+             patch('google.cloud.bigquery.Client'), \
              patch('google.cloud.bigquery.DatasetReference'), \
              patch('google.cloud.bigquery.TableReference'), \
              patch('google.cloud.bigquery.LoadJobConfig'):
+            mock_bq_client.return_value.create_dataset.return_value = None
+            mock_bq_client.return_value.load_table_from_uris.return_value = None
             # Should not raise
             client.gs_parquet_to_bq(
                 gs_uris="gs://bucket/file.parquet",
