@@ -1,4 +1,3 @@
-import os
 import unittest
 from unittest import mock
 from unittest.mock import Mock
@@ -20,11 +19,8 @@ class TestGS(unittest.TestCase):
         mock_client_instance.download_blob_to_file = mock.Mock()
 
         gs_uri = 'gs://fake_bucket/fake_file.csv'
-        destination_file_name = None 
-
+       
         test_client.download(gs_uri)
-
-        expected_file_name = 'fake_file.csv'
 
         mock_client_instance.download_blob_to_file.assert_called_once()
         called_args = mock_client_instance.download_blob_to_file.call_args[0]
