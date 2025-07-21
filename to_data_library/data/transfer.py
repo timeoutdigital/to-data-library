@@ -484,35 +484,52 @@ class Client:
 
         return s3_files
 
-    def s3_to_bq(self, aws_session, bucket_name, object_name,
-                 bq_table, write_preference, auto_detect=True, separator=',',
-                 skip_leading_rows=True, schema=None, partition_date=None, partition_field=None,
-                 source_format='CSV', max_bad_records=0):
+    def s3_to_bq(
+        self,
+        aws_session,
+        bucket_name,
+        object_name,
+        bq_table,
+        write_preference,
+        auto_detect=True,
+        separator=',',
+        skip_leading_rows=True,
+        schema=None,
+        partition_date=None,
+        partition_field=None,
+        source_format='CSV',
+        max_bad_records=0,
+        gs_bucket_name=None,
+        gs_file_name=None
+    ):
+
         """
-        Exports S3 file to BigQuery table
+        Exports S3 file to BigQuery table via GCS staging.
 
         Args:
-          aws_session: authenticated AWS session.
-          bucket_name (str): s3 bucket name
-          object_name (str): s3 object name to copy
-          bq_table (str): The BigQuery table. For example: ``my-project-id.my-dataset.my-table``
-          write_preference (str): The option to specify what action to take when you load data from a source file.
+        aws_session: authenticated AWS session.
+        bucket_name (str): s3 bucket name
+        object_name (str): s3 object name to copy
+        bq_table (str): The BigQuery table. For example: ``my-project-id.my-dataset.my-table``
+        write_preference (str): The option to specify what action to take when you load data from a source file.
             Value can be one of
                 ``'empty'``: Writes the data only if the table is empty.
                 ``'append'``: Appends the data to the end of the table.
                 ``'truncate'``: Erases all existing data in a table before writing the new data.
-          auto_detect (boolean, Optional):  True if the schema should automatically be detected otherwise False.
+        auto_detect (boolean, Optional):  True if the schema should automatically be detected otherwise False.
             Defaults to `True`.
-          separator (str, optional): The separator. Defaults to `,`.
-          skip_leading_rows (boolean, Optional):  True to skip the first row of the file otherwise False. Defaults to
+        separator (str, optional): The separator. Defaults to `,`.
+        skip_leading_rows (boolean, Optional):  True to skip the first row of the file otherwise False. Defaults to
             `True`.
-          schema (tuple, optional): The BigQuery table schema. For example: ``(('first_field','STRING'),
-          ('second_field', 'STRING'))``
-          partition_date (str, Optional): The ingestion date for partitioned BigQuery table. For example: ``20210101``.
-          partition_field (str, Optional): The field on which the destination table is partitioned.
-          The field must be a top-level TIMESTAMP or DATE field. Must be used in conjunction with partition_date.
-          source_format (str, Optional): The file format (CSV, JSON, PARQUET or AVRO). Defaults to 'CSV'.
-          max_bad_records (int, Optional): The maximum number of rows with errors. Defaults to 0.
+        schema (tuple, optional): The BigQuery table schema. For example: ``(('first_field','STRING'),
+        ('second_field', 'STRING'))``
+        partition_date (str, Optional): The ingestion date for partitioned BigQuery table. For example: ``20210101``.
+        partition_field (str, Optional): The field on which the destination table is partitioned.
+        The field must be a top-level TIMESTAMP or DATE field. Must be used in conjunction with partition_date.
+        source_format (str, Optional): The file format (CSV, JSON, PARQUET or AVRO). Defaults to 'CSV'.
+        max_bad_records (int, Optional): The maximum number of rows with errors. Defaults to 0.
+        gs_bucket_name (str, required): The GCS bucket to stage the file.
+        gs_file_name (str, optional): The name for the staged file in GCS.
 
         Example:
             >>> from to_data_library.data import transfer
@@ -520,13 +537,23 @@ class Client:
             >>> client.s3_to_bq(aws_connection,
             >>>                 bucket_name='my-s3-bucket_name',
             >>>                 object_name='my-s3-object-name',
-            >>>                 bq_table='my-project-id.my-dataset.my-table')
+            >>>                 bq_table='my-project-id.my-dataset.my-table',
+            >>>                 gs_bucket_name='my-gcs-bucket')
         """
 
         # Download S3 file to local
         s3_client = s3.Client(aws_session)
         local_file = os.path.join('/tmp/', object_name)
         s3_client.download(bucket_name, object_name, local_file)
+
+        # Upload local file to GCS
+        if not gs_bucket_name:
+            logs.client.logger.error("gs_bucket_name must be provided to stage file in GCS before loading to BQ")
+            raise ValueError("gs_bucket_name must be provided")
+        gs_client = gs.Client(self.project, impersonated_credentials=self.impersonated_credentials)
+        gs_file_name = gs_file_name if gs_file_name else object_name
+        gs_client.upload(local_file, gs_bucket_name, gs_file_name)
+        gs_uri = f"gs://{gs_bucket_name}/{gs_file_name}"
 
         project, dataset_id, table_id = bq_table.split('.')
         dataset_ref = bigquery.DatasetReference(project=project, dataset_id=dataset_id)
@@ -544,16 +571,20 @@ class Client:
         # Partitioning logic (same as gs_to_bq)
         if partition_date and not partition_field:
             job_config.time_partitioning = bigquery.TimePartitioning(
-                type_=bigquery.TimePartitioningType.DAY)
+                    type_=bigquery.TimePartitioningType.DAY
+                )
             table_id += f'${partition_date}'
         elif partition_date and partition_field:
             job_config.time_partitioning = bigquery.TimePartitioning(
-                type_=bigquery.TimePartitioningType.DAY, field=partition_field)
+                    type_=bigquery.TimePartitioningType.DAY,
+                    field=partition_field
+                )
             table_id += f'${partition_date}'
         elif partition_field and not partition_date and write_preference == 'truncate':
             logs.client.logger.error(
-                "Error: if partition_field is supplied, partition_date must also be supplied")
-            sys.exit(1)
+                    "Error: if partition_field is supplied, partition_date must also be supplied"
+                )
+            raise ValueError("partition_field supplied without partition_date")
 
         table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
 
@@ -572,7 +603,7 @@ class Client:
         else:
             logs.client.logger.error(
                 f"Invalid SourceFormat entered: {source_format}")
-            sys.exit(1)
+            raise ValueError(f"Invalid SourceFormat entered: {source_format}")
 
         # Schema as tuple/list of tuples
         if schema:
@@ -585,10 +616,10 @@ class Client:
         except exceptions.Conflict:
             logs.client.logger.info(f'Dataset {dataset_id} Already exists')
 
-        logs.client.logger.info(f'Loading BigQuery table {bq_table} from {local_file}')
+        logs.client.logger.info(f'Loading BigQuery table {bq_table} from {gs_uri}')
         try:
             bq_client.load_table_from_uris(
-                [local_file], table_ref, job_config=job_config
+                [gs_uri], table_ref, job_config=job_config
             )
         except Exception as e:
             logs.client.logger.error(f"Unexpected error occurred: {e}")
