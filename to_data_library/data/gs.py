@@ -42,50 +42,35 @@ class Client:
 
         Args:
             source_file_name (str):  The source file name.
-            bucket_name (str):  The Google Storage bucket name.
+            bucket_name (str):  The Google Storage bucket name (no 'gs://' prefix).
             blob_name (str): The destination file name in the bucket, if not provided source file name will be used.
         """
         if not blob_name:
             blob_name = source_file_name.split('/')[-1]
 
-        # For the API to work, need to remove 'gs://'
-        bucket_rename = bucket_name.replace('gs://', '')
-        bucket = self.storage_client.bucket(bucket_rename)
-        blob = bucket.blob(blob_name)
-
+        blob = self.storage_client.bucket(bucket_name).blob(blob_name)
         blob.upload_from_filename(source_file_name)
 
     def list_bucket_uris(self, bucket_name, file_type='csv', prefix=None):
         """Lists the files in a bucket
 
         Args:
-            bucket_name (str): the bucket name
-            file_type (str): the prefix for the files to list (default: csv)
+            bucket_name (str): the bucket name (no 'gs://' prefix)
+            file_type (str): the suffix for the files to list (default: csv)
             prefix (str): the folder path to the files
 
         Returns:
             list: The list of the contents
         """
-
-        # For the API to work, need to remove 'gs://'
-        bucket_rename = bucket_name.replace('gs://', '')
-        bucket = self.storage_client.bucket(bucket_rename)
-        blobs = bucket.list_blobs(prefix=prefix)
-
-        gs_uris = []
-
-        for blob in blobs:
-            if blob.name.endswith(file_type):
-                uri = f"gs://{bucket_rename}/{blob.name}"
-                gs_uris.append(uri)
-
+        blobs = self.storage_client.list_blobs(bucket_name, prefix=prefix)
+        gs_uris = [f"gs://{bucket_name}/{blob.name}" for blob in blobs if blob.name.endswith(file_type)]
         return gs_uris
 
     def create_bucket(self, bucket_name):
         """create a bucket in Google Storage.
 
         Args:
-            bucket_name (str):  The Google Storage bucket name.
+            bucket_name (str):  The Google Storage bucket name (no 'gs://' prefix).
         """
 
         self.storage_client.create_bucket(bucket_name, location='EU')
@@ -94,34 +79,21 @@ class Client:
         """Converts a gzip json file to ndjson with minimal memory and storage usage.
 
         Args:
-            bucket_name (str): the bucket name
-            input_gz_file (str): the path and name of the GZIP file to be processed (format: gs://path/to/file.gz)
-            output_file (str): the path and name of the file to be created (format: gs://path/to/file.ndjson)
+            bucket_name (str): the bucket name (no 'gs://' prefix)
+            input_gz_file (str): the path and name of the GZIP file to be processed (format: bucket/path/to/file.gz)
+            output_file (str): the path and name of the file to be created (format: bucket/path/to/file.ndjson)
         """
-        bucket_rename = bucket_name.replace('gs://', '')
-        input_gz_file_rename = input_gz_file[len(bucket_name)+1:]
-        output_file_rename = output_file[len(bucket_name)+1:]
-
-        bucket = self.storage_client.bucket(bucket_rename)
-        input_blob = bucket.blob(input_gz_file_rename)
-        target_blob = bucket.blob(output_file_rename)
-
+        input_blob = self.storage_client.bucket(bucket_name).blob(input_gz_file)
+        target_blob = self.storage_client.bucket(bucket_name).blob(output_file)
         if target_blob.exists():
             target_blob.delete()
-
-        # Stream reading from the gzipped input file
         input_stream = BytesIO(input_blob.download_as_bytes())
         with gzip.GzipFile(fileobj=input_stream, mode='rb') as gz_file:
-            # Wrap the gzipped file object in a text wrapper to read JSON line by line
             with TextIOWrapper(gz_file, encoding='utf-8') as text_file:
-                # Use a generator to convert each JSON object to NDJSON and stream the output
                 def json_to_ndjson_stream():
                     json_data = json.load(text_file)
                     for json_obj in json_data:
                         yield (ndjson.dumps([json_obj]) + '\n').encode('utf-8')
-
-                # Upload the output to GCS in streaming mode
                 target_blob.upload_from_file(BytesIO(b''.join(json_to_ndjson_stream())),
                                              content_type='application/x-ndjson')
-
-        logs.client.logger.info(f"Converted and uploaded NDJSON file to: {output_file}")
+        logs.client.logger.info(f"Converted and uploaded NDJSON file to: gs://{bucket_name}/{output_file}")

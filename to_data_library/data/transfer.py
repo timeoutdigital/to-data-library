@@ -46,7 +46,7 @@ class Client:
 
         Args:
             table (str):  The BigQuery table name. For example: ``my-project-id.you-dataset.my-table``
-            bucket_name (str):  The name of the bucket in GoogleStorage.
+            bucket_name (str):  The name of the bucket in GoogleStorage (no 'gs://' prefix).
             separator (:obj:`str`, optional): The separator. Defaults to :data:`,`.
             print_header (:obj:`boolean`, optional):  True to print a header row in the exported data otherwise False.
               Defaults to :data:`True`.
@@ -61,12 +61,10 @@ class Client:
             >>> client = transfer.Client(project='my-project-id')
             >>> client.bq_to_gs('my-project-id.some_dataset.some_table', 'some-bucket-name')
         """
-
         project, dataset_id, table_id = table.split('.')
         dataset_ref = bigquery.DatasetReference(
             project=project, dataset_id=dataset_id)
         table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
-
         bq_client = bigquery.Client(project=self.project)
         logs.client.logger.info(
             'Extracting from {table} to gs://{bucket_name}/{table_id}_*'.format(
@@ -87,7 +85,6 @@ class Client:
         logs.client.logger.info(
             'Getting the list of available blobs in gs://{}'.format(bucket_name))
         blobs = storage_client.list_blobs(bucket_name)
-
         return ['gs://{}/{}'.format(bucket_name, blob.name) for blob in blobs]
 
     def gs_to_bq(self, gs_uris, table,
@@ -135,7 +132,6 @@ class Client:
             >>> client = transfer.Client(project='my-project-id')
             >>> client.gs_to_bq(gs_uris='gs://my-bucket-name/my-filename',table='my-project-id.my_dataset.my_table')
         """
-
         project, dataset_id, table_id = table.split('.')
         dataset_ref = bigquery.DatasetReference(
             project=project, dataset_id=dataset_id)
@@ -235,7 +231,6 @@ class Client:
             >>> client = transfer.Client(project='my-project-id')
             >>> client.gs_to_bq(gs_uris='gs://my-bucket-name/my-filename',table='my-project-id.my_dataset.my_table')
         """
-
         project, dataset_id, table_id = table.split('.')
         dataset_ref = bigquery.DatasetReference(
             project=project, dataset_id=dataset_id)
@@ -285,7 +280,7 @@ class Client:
                                               ``'truncate'``: Erases all existing data in a table before writing the
                                                 new data.
             ftp_filepath (str): The path to the file to download.
-            separator (:obj:`str`, Optional): The separator. Defaults to :data:`,`.\n
+            separator (:obj:`str`, Optional): The separator. Defaults to :data:`,`.
             skip_leading_rows (boolean, Optional): True to skip the first row of the file otherwise False.
                 Defaults to :data:`True`.
             bq_table_schema (tuple, Optional): The BigQuery table schema. For example: ``(('first_field','STRING'),
@@ -375,8 +370,6 @@ class Client:
         Args:
         aws_session: authenticated AWS session.
         gs_uri (str): Google storage uri path
-        s3_connection_string (str): The S3 connection string in the format
-                                    {region}:{access_key}:{secret_key}
         s3_bucket (str): s3 bucket name
 
         Example:
@@ -406,7 +399,7 @@ class Client:
           aws_session: authenticated AWS session.
           s3_bucket_name (str): s3 bucket name
           s3_object_name (str): s3 object name or prefix to match multiple files to copy
-          gs_bucket_name (str): Google storage bucket name
+          gs_bucket_name (str): Google storage bucket name (no 'gs://' prefix)
           gs_file_name (str): GS file name
           wildcard (str): regex wildcard (default '.*')
 
