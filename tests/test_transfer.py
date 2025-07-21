@@ -8,7 +8,7 @@ from to_data_library.data import transfer
 
 class TestTransfer(unittest.TestCase):
     @patch('google.cloud.bigquery.Client')
-    @patch('google.cloud.storage.Client')
+    @patch("to_data_library.data.gs.storage.Client")
     def test_bq_to_gs(self, mock_storage, mock_bigquery):
         mock_bigquery_client = mock_bigquery.return_value
         mock_extract_job = Mock()
@@ -83,7 +83,7 @@ class TestTransfer(unittest.TestCase):
     @patch('boto3.resource')
     @patch('to_data_library.data.bq.default')
     @patch('to_data_library.data.s3.Client')
-    @patch('google.cloud.storage.Client')
+    @patch("to_data_library.data.gs.storage.Client")
     def test_s3_to_gs(self, mock_storage, mock_s3_client, mock_default, mock_s3_resource, mock_s3_boto):
         mock_aws_session = Mock()
         mock_aws_session.return_value = 'fake_session'

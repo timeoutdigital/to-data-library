@@ -12,17 +12,24 @@ def tearDownModule():
 
 
 class TestGS(unittest.TestCase):
-    @mock.patch('to_data_library.data.gs.storage')
-    def test_download(self, mock_storage):
+    @mock.patch('to_data_library.data.gs.storage.Client')
+    def test_download(self, mock_storage_client):
+        mock_client_instance = mock_storage_client.return_value
         test_client = Client(project='fake_project')
+        
+        mock_client_instance.download_blob_to_file = mock.Mock()
 
-        test_client.download(gs_uri='/fake_uri.csv')
-        self.assertTrue(os.path.exists('fake_uri.csv'))
-        os.remove('fake_uri.csv')
+        gs_uri = 'gs://fake_bucket/fake_file.csv'
+        destination_file_name = None 
 
-        test_client.download(gs_uri='/fake_uri', destination_file_name='fake_des.csv')
-        self.assertTrue(os.path.exists('fake_des.csv'))
-        os.remove('fake_des.csv')
+        test_client.download(gs_uri)
+
+        expected_file_name = 'fake_file.csv'
+
+        mock_client_instance.download_blob_to_file.assert_called_once()
+        called_args = mock_client_instance.download_blob_to_file.call_args[0]
+        assert called_args[0] == gs_uri, f"Expected gs_uri {gs_uri}, got {called_args[0]}"
+        assert hasattr(called_args[1], 'write'), "Expected a file-like object"
 
     @mock.patch('to_data_library.data.gs.storage')
     def test_upload(self, mock_storage):
@@ -37,3 +44,4 @@ class TestGS(unittest.TestCase):
 
         test_client.upload('tests/data/sample.csv', 'fake_bucket', 'new_name')
         mock_bucket.blob.assert_called_with('new_name')
+
