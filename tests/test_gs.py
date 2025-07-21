@@ -18,9 +18,11 @@ class TestGS(unittest.TestCase):
 
         test_client.download(gs_uri='/fake_uri.csv')
         self.assertTrue(os.path.exists('fake_uri.csv'))
+        os.remove('fake_uri.csv')
 
         test_client.download(gs_uri='/fake_uri', destination_file_name='fake_des.csv')
         self.assertTrue(os.path.exists('fake_des.csv'))
+        os.remove('fake_des.csv')
 
     @mock.patch('to_data_library.data.gs.storage')
     def test_upload(self, mock_storage):

@@ -27,55 +27,58 @@ class TestTransfer(unittest.TestCase):
         mock_storage_client.list_blobs.assert_called_once_with('fake_bucket_name')
 
 
-@patch('google.cloud.bigquery.DatasetReference')
-@patch('google.cloud.bigquery.TableReference')
-@patch('google.cloud.bigquery.Client')
-@patch('google.cloud.bigquery.LoadJobConfig')
-@patch('to_data_library.data.bq.default')
-def test_gs_to_bq(self, mock_default, mock_loadjobconfig,
-                  mock_bigqueryclient, mock_tablereference, mock_datasetreference):
+    @patch('google.cloud.bigquery.DatasetReference')
+    @patch('google.cloud.bigquery.TableReference')
+    @patch('to_data_library.data.bq.Client')
+    @patch('google.cloud.bigquery.LoadJobConfig')
+    @patch('to_data_library.data.bq.default')
+    def test_gs_to_bq(self, mock_default, mock_loadjobconfig,
+                    mock_bq_client, mock_tablereference, mock_datasetreference):
 
-    mock_default.return_value = 'first', 'second'
+        mock_default.return_value = 'first', 'second'
 
-    # Mock return values for LoadJobConfig
-    mock_loadjobconfig.return_value.source_format = 'CSV'
-    mock_loadjobconfig.return_value.skip_leading_rows = 1
-    mock_loadjobconfig.return_value.autodetect = True
-    mock_loadjobconfig.return_value.field_delimiter = ','
-    mock_loadjobconfig.return_value.write_disposition = 'WRITE_TRUNCATE'
-    mock_loadjobconfig.return_value.allow_quoted_newlines = True
-    mock_loadjobconfig.return_value.max_bad_records = 10
+        # Mock return values for LoadJobConfig
+        mock_loadjobconfig.return_value.source_format = 'CSV'
+        mock_loadjobconfig.return_value.skip_leading_rows = 1
+        mock_loadjobconfig.return_value.autodetect = True
+        mock_loadjobconfig.return_value.field_delimiter = ','
+        mock_loadjobconfig.return_value.write_disposition = 'WRITE_TRUNCATE'
+        mock_loadjobconfig.return_value.allow_quoted_newlines = True
+        mock_loadjobconfig.return_value.max_bad_records = 10
 
-    client = transfer.Client('fake_project_name')
-    client.gs_to_bq(
-        gs_uris="gs://{}/{}".format('fake_bucket_name', 'sample.csv'),
-        table='{}.{}.{}'.format('fake_project_name', 'fake_dataset_id', 'fake_table_id'),
-        write_preference='truncate',
-        max_bad_records=10
-    )
+        # Mock load_table_from_uris on the bq.Client
+        mock_bq_client.return_value.load_table_from_uris = Mock()
 
-    mock_datasetreference.assert_called_with(project='fake_project_name', dataset_id='fake_dataset_id')
-    mock_tablereference.assert_called_with(ANY, table_id='fake_table_id')
+        client = transfer.Client('fake_project_name')
+        client.gs_to_bq(
+            gs_uris="gs://{}/{}".format('fake_bucket_name', 'sample.csv'),
+            table='{}.{}.{}'.format('fake_project_name', 'fake_dataset_id', 'fake_table_id'),
+            write_preference='truncate',
+            max_bad_records=10
+        )
 
-    # Assert that LoadJobConfig was created
-    mock_loadjobconfig.assert_called_once()
+        mock_datasetreference.assert_called_with(project='fake_project_name', dataset_id='fake_dataset_id')
+        mock_tablereference.assert_called_with(ANY, table_id='fake_table_id')
 
-    # Check that the job_config attributes are correct
-    job_config = mock_loadjobconfig.return_value
-    self.assertEqual(job_config.source_format, 'CSV')
-    self.assertEqual(job_config.skip_leading_rows, 1)
-    self.assertEqual(job_config.autodetect, True)
-    self.assertEqual(job_config.field_delimiter, ',')
-    self.assertEqual(job_config.write_disposition, 'WRITE_TRUNCATE')
-    self.assertEqual(job_config.allow_quoted_newlines, True)
-    self.assertEqual(job_config.max_bad_records, 10)
+        # Assert that LoadJobConfig was created
+        mock_loadjobconfig.assert_called_once()
 
-    # Assert load_table_from_uris is called with the right parameters
-    mock_bigqueryclient.return_value.load_table_from_uris.assert_called_once_with(
-        "gs://fake_bucket_name/sample.csv",
-        ANY,  # table_ref
-        job_config=job_config
-    )
+        # Check that the job_config attributes are correct
+        job_config = mock_loadjobconfig.return_value
+        self.assertEqual(job_config.source_format, 'CSV')
+        self.assertEqual(job_config.skip_leading_rows, 1)
+        self.assertEqual(job_config.autodetect, True)
+        self.assertEqual(job_config.field_delimiter, ',')
+        self.assertEqual(job_config.write_disposition, 'WRITE_TRUNCATE')
+        self.assertEqual(job_config.allow_quoted_newlines, True)
+        self.assertEqual(job_config.max_bad_records, 10)
+
+        # Assert load_table_from_uris is called with the right parameters
+        mock_bq_client.return_value.load_table_from_uris.assert_called_once_with(
+            "gs://fake_bucket_name/sample.csv",
+            ANY,  # table_ref
+            job_config=job_config
+        )
 
     @patch('boto3.client')
     @patch('boto3.resource')
