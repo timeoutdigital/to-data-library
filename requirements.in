@@ -1,6 +1,7 @@
 boto3
 coverage
 delegator.py
+google-api-core
 google-api-python-client
 google-cloud-bigquery
 google-cloud-storage

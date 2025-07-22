@@ -85,15 +85,33 @@ class Client:
         """
         input_blob = self.storage_client.bucket(bucket_name).blob(input_gz_file)
         target_blob = self.storage_client.bucket(bucket_name).blob(output_file)
+
         if target_blob.exists():
             target_blob.delete()
+
         input_stream = BytesIO(input_blob.download_as_bytes())
+        output_stream = BytesIO()
+
         with gzip.GzipFile(fileobj=input_stream, mode='rb') as gz_file:
             with TextIOWrapper(gz_file, encoding='utf-8') as text_file:
-                def json_to_ndjson_stream():
+                try:
+                    # Try to treat file as a JSON array
                     json_data = json.load(text_file)
                     for json_obj in json_data:
-                        yield (ndjson.dumps([json_obj]) + '\n').encode('utf-8')
-                target_blob.upload_from_file(BytesIO(b''.join(json_to_ndjson_stream())),
-                                             content_type='application/x-ndjson')
+                        output_stream.write(ndjson.dumps([json_obj]).encode('utf-8') + b'\n')
+                except json.JSONDecodeError:
+                    # Rewind stream and treat as line-delimited JSON (NDJSON)
+                    input_stream.seek(0)
+                    with gzip.GzipFile(fileobj=input_stream, mode='rb') as gz_file_reopened:
+                        with TextIOWrapper(gz_file_reopened, encoding='utf-8') as line_file:
+                            for line in line_file:
+                                try:
+                                    json_obj = json.loads(line)
+                                    output_stream.write(ndjson.dumps([json_obj]).encode('utf-8') + b'\n')
+                                except json.JSONDecodeError:
+                                    self.logger.warning("Skipping malformed line in file: %s", input_gz_file)
+
+        output_stream.seek(0)
+        target_blob.upload_from_file(output_stream, content_type='application/x-ndjson')
+
         logs.client.logger.info(f"Converted and uploaded NDJSON file to: gs://{bucket_name}/{output_file}")

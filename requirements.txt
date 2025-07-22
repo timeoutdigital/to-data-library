@@ -45,6 +45,7 @@ filelock==3.12.3
     # via virtualenv
 google-api-core[grpc]==2.11.0
     # via
+    #   -r requirements.in
     #   google-api-python-client
     #   google-cloud-bigquery
     #   google-cloud-core
