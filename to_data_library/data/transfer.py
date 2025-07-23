@@ -24,10 +24,28 @@ class Client:
 
     @staticmethod
     def validate_schema(schema):
+        """
+        Validates a schema definition. If the schema is already a valid BigQuery schema 
+        (list of dicts with 'name' and 'type'), no processing is done.
+
+        Args:
+            schema (list): List of tuples or BigQuery-compatible schema dictionaries.
+
+        Raises:
+            ValueError: If the schema is invalid.
+        """
         VALID_BQ_TYPES = {
             "STRING", "BYTES", "INTEGER", "INT64", "FLOAT", "FLOAT64", "NUMERIC", "BIGNUMERIC",
             "BOOLEAN", "BOOL", "TIMESTAMP", "DATE", "TIME", "DATETIME", "GEOGRAPHY", "RECORD", "STRUCT"
         }
+
+        if isinstance(schema, list) and all(
+            isinstance(field, dict) and "name" in field and "type" in field 
+            for field in schema
+        ):
+            # Already in BigQuery schema format, skip validation
+            return
+
         for field in schema:
             if not isinstance(field, (list, tuple)) or len(field) < 2:
                 raise ValueError(
@@ -40,6 +58,7 @@ class Client:
                 raise ValueError(
                     f"Field type {type_} is not a valid BigQuery type"
                 )
+
 
     def bq_to_gs(self, table, bucket_name, separator=',', print_header=True, compress=False):
         """Extract BigQuery table into the GoogleStorage
@@ -166,7 +185,11 @@ class Client:
 
         if schema:
             self.validate_schema(schema)
-            job_config.schema = [bigquery.SchemaField(field[0], field[1]) for field in schema]
+            if isinstance(schema[0], bigquery.SchemaField):
+                job_config.schema = schema
+            else:
+                job_config.schema = [bigquery.SchemaField(field[0], field[1]) for field in schema]
+
 
         # Define the source format
         if source_format == 'CSV':
