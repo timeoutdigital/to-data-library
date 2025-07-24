@@ -5,6 +5,7 @@ from typing import List
 
 from google.api_core import exceptions
 from google.cloud import bigquery, storage
+from google.cloud.bigquery import SchemaField
 
 from to_data_library.data import bq, ftp, gs, logs, s3
 from to_data_library.data._helper import get_bq_write_disposition, merge_files
@@ -25,11 +26,12 @@ class Client:
     @staticmethod
     def validate_schema(schema):
         """
-        Validates a schema definition. If the schema is already a valid BigQuery schema 
-        (list of dicts with 'name' and 'type'), no processing is done.
+        Validates a schema definition. If the schema is already a valid BigQuery schema
+        (list of dicts with 'name' and 'type') or list of SchemaField objects, no processing is done.
 
         Args:
-            schema (list): List of tuples or BigQuery-compatible schema dictionaries.
+            schema (list): List of tuples, BigQuery-compatible schema dictionaries,
+                        or SchemaField instances.
 
         Raises:
             ValueError: If the schema is invalid.
@@ -39,13 +41,18 @@ class Client:
             "BOOLEAN", "BOOL", "TIMESTAMP", "DATE", "TIME", "DATETIME", "GEOGRAPHY", "RECORD", "STRUCT"
         }
 
+        # Case 1: Already a list of dicts with 'name' and 'type'
         if isinstance(schema, list) and all(
-            isinstance(field, dict) and "name" in field and "type" in field 
+            isinstance(field, dict) and "name" in field and "type" in field
             for field in schema
         ):
-            # Already in BigQuery schema format, skip validation
             return
 
+        # ✅ Case 2: List of SchemaField objects
+        if isinstance(schema, list) and all(isinstance(field, SchemaField) for field in schema):
+            return
+
+        # Case 3: Validate tuples like (name, type)
         for field in schema:
             if not isinstance(field, (list, tuple)) or len(field) < 2:
                 raise ValueError(
@@ -58,7 +65,6 @@ class Client:
                 raise ValueError(
                     f"Field type {type_} is not a valid BigQuery type"
                 )
-
 
     def bq_to_gs(self, table, bucket_name, separator=',', print_header=True, compress=False):
         """Extract BigQuery table into the GoogleStorage
@@ -189,7 +195,6 @@ class Client:
                 job_config.schema = schema
             else:
                 job_config.schema = [bigquery.SchemaField(field[0], field[1]) for field in schema]
-
 
         # Define the source format
         if source_format == 'CSV':
