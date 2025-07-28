@@ -22,25 +22,6 @@ class Client:
         self.project = project
         self.impersonated_credentials = impersonated_credentials
 
-    @staticmethod
-    def validate_schema(schema):
-        VALID_BQ_TYPES = {
-            "STRING", "BYTES", "INTEGER", "INT64", "FLOAT", "FLOAT64", "NUMERIC", "BIGNUMERIC",
-            "BOOLEAN", "BOOL", "TIMESTAMP", "DATE", "TIME", "DATETIME", "GEOGRAPHY", "RECORD", "STRUCT"
-        }
-        for field in schema:
-            if not isinstance(field, (list, tuple)) or len(field) < 2:
-                raise ValueError(
-                    f"Schema field {field} is not a tuple of (name, type)"
-                )
-            name, type_ = field[0], field[1]
-            if not isinstance(name, str):
-                raise ValueError(f"Field name {name} is not a string")
-            if type_.upper() not in VALID_BQ_TYPES:
-                raise ValueError(
-                    f"Field type {type_} is not a valid BigQuery type"
-                )
-
     def bq_to_gs(self, table, bucket_name, separator=',', print_header=True, compress=False):
         """Extract BigQuery table into the GoogleStorage
 
@@ -165,8 +146,10 @@ class Client:
             job_config.field_delimiter = separator
 
         if schema:
-            self.validate_schema(schema)
-            job_config.schema = [bigquery.SchemaField(field[0], field[1]) for field in schema]
+            if isinstance(schema[0], bigquery.SchemaField):
+                job_config.schema = schema
+            else:
+                job_config.schema = [bigquery.SchemaField(field[0], field[1]) for field in schema]
 
         # Define the source format
         if source_format == 'CSV':
@@ -257,9 +240,10 @@ class Client:
                 'Dataset {} Already exists'.format(dataset_id))
 
         if schema:
-            self.validate_schema(schema)
-            job_config.schema = [bigquery.SchemaField(
-                schema_field[0], schema_field[1]) for schema_field in schema]
+            if isinstance(schema[0], bigquery.SchemaField):
+                job_config.schema = schema
+            else:
+                job_config.schema = [bigquery.SchemaField(field[0], field[1]) for field in schema]
 
         logs.client.logger.info(
             'Loading BigQuery table {} from {}'.format(table, gs_uris))
@@ -303,10 +287,6 @@ class Client:
         # download the ftp file
         ftp_client = ftp.Client(connection_string=ftp_connection_string)
         local_file = ftp_client.download_file(ftp_filepath)
-
-        # schema validation if provided
-        if bq_table_schema:
-            self.validate_schema(bq_table_schema)
 
         # upload the ftp file into BigQuery
         bq_client = bq.Client(project=self.project,
@@ -607,8 +587,10 @@ class Client:
 
         # Schema as tuple/list of tuples
         if schema:
-            self.validate_schema(schema)
-            job_config.schema = [bigquery.SchemaField(field[0], field[1]) for field in schema]
+            if isinstance(schema[0], bigquery.SchemaField):
+                job_config.schema = schema
+            else:
+                job_config.schema = [bigquery.SchemaField(field[0], field[1]) for field in schema]
 
         bq_client = bq.Client(project, impersonated_credentials=self.impersonated_credentials)
         try:
