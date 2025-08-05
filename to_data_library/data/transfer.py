@@ -468,7 +468,8 @@ class Client:
         self,
         aws_session,
         bucket_name,
-        object_name,
+        s3_key=None, # New multi file parameter
+        object_name=None, # Deprecated, use s3_key instead
         bq_table,
         write_preference,
         auto_detect=True,
@@ -480,7 +481,9 @@ class Client:
         source_format='CSV',
         max_bad_records=0,
         gs_bucket_name=None,
-        gs_file_name=None
+        gs_file_name=None,
+        multi_file_limit=10, #tbc
+        allow_multi_file=False
     ):
 
         """
@@ -489,7 +492,8 @@ class Client:
         Args:
         aws_session: authenticated AWS session.
         bucket_name (str): s3 bucket name
-        object_name (str): s3 object name to copy
+        s3_key (str): s3 object prefix name/s to copy
+        object_name (str): Deprecated. Use `s3_key` instead.
         bq_table (str): The BigQuery table. For example: ``my-project-id.my-dataset.my-table``
         write_preference (str): The option to specify what action to take when you load data from a source file.
             Value can be one of
@@ -516,22 +520,22 @@ class Client:
             >>> client = transfer.Client(project='my-project-id')
             >>> client.s3_to_bq(aws_connection,
             >>>                 bucket_name='my-s3-bucket_name',
-            >>>                 object_name='my-s3-object-name',
+            >>>                 s3_key='my-s3-key',
             >>>                 bq_table='my-project-id.my-dataset.my-table',
             >>>                 gs_bucket_name='my-gcs-bucket')
         """
 
         # Download S3 file to local
         s3_client = s3.Client(aws_session)
-        local_file = os.path.join('/tmp/', object_name)
-        s3_client.download(bucket_name, object_name, local_file)
+        local_file = os.path.join('/tmp/', s3_key)
+        s3_client.download(bucket_name, s3_key, local_file)
 
         # Upload local file to GCS
         if not gs_bucket_name:
             logs.client.logger.error("gs_bucket_name must be provided to stage file in GCS before loading to BQ")
             raise ValueError("gs_bucket_name must be provided")
         gs_client = gs.Client(self.project, impersonated_credentials=self.impersonated_credentials)
-        gs_file_name = gs_file_name if gs_file_name else object_name
+        gs_file_name = gs_file_name if gs_file_name else s3_key
         gs_client.upload(local_file, gs_bucket_name, gs_file_name)
         gs_uri = f"gs://{gs_bucket_name}/{gs_file_name}"
 
