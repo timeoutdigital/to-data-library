@@ -1,8 +1,11 @@
+import json
 import os
 import re
 import sys
 from typing import List
 
+import pyarrow.parquet as pq
+from fastavro import reader as avro_reader
 from google.api_core import exceptions
 from google.cloud import bigquery, storage
 
@@ -726,6 +729,99 @@ class Client:
             )
             local_files = []
             gs_uris = []
+
+            # Check all files are the same format and structure
+            def get_file_format(filename):
+                return os.path.splitext(filename)[1].lower()
+
+            def get_csv_header(filepath):
+                with open(filepath, "r", encoding="utf-8") as f:
+                    return f.readline().strip()
+
+            def get_json_keys(filepath):
+                with open(filepath, "r", encoding="utf-8") as f:
+                    for line in f:
+                        try:
+                            obj = json.loads(line)
+                            return set(obj.keys())
+                        except Exception:
+                            continue
+                return set()
+
+            def get_parquet_schema(filepath):
+                table = pq.read_table(filepath)
+                return tuple((field.name, str(field.type)) for field in table.schema)
+
+            def get_avro_schema(filepath):
+                with open(filepath, "rb") as fo:
+                    avro_r = avro_reader(fo)
+                    schema = avro_r.schema
+                    return tuple(
+                        (field["name"], str(field["type"]))
+                        for field in schema["fields"]
+                    )
+
+            formats = set()
+            csv_headers = set()
+            json_keys = set()
+            parquet_schemas = set()
+            avro_schemas = set()
+            temp_files = []
+
+            for key in s3_keys:
+                local_file = os.path.join("/tmp/", key.replace("/", "_"))
+                try:
+                    s3_client.download(bucket_name, key, local_file)
+                    logs.client.logger.info(f"Downloaded {key} to {local_file}")
+                    temp_files.append(local_file)
+                    fmt = get_file_format(key)
+                    formats.add(fmt)
+                    if fmt == ".csv":
+                        csv_headers.add(get_csv_header(local_file))
+                    elif fmt == ".json":
+                        json_keys.add(frozenset(get_json_keys(local_file)))
+                    elif fmt == ".parquet":
+                        parquet_schemas.add(get_parquet_schema(local_file))
+                    elif fmt == ".avro":
+                        avro_schemas.add(get_avro_schema(local_file))
+                except Exception as e:
+                    logs.client.logger.error(f"Failed to process {key}: {e}")
+                    continue
+
+            # Check all formats are the same
+            if len(formats) > 1:
+                for f in temp_files:
+                    if os.path.exists(f):
+                        os.remove(f)
+                raise RuntimeError(f"Files have different formats: {formats}")
+
+            # Check all CSV headers are the same
+            if ".csv" in formats and len(csv_headers) > 1:
+                for f in temp_files:
+                    if os.path.exists(f):
+                        os.remove(f)
+                raise RuntimeError("CSV files have different headers.")
+
+            # Check all JSON keys are the same
+            if ".json" in formats and len(json_keys) > 1:
+                for f in temp_files:
+                    if os.path.exists(f):
+                        os.remove(f)
+                raise RuntimeError("JSON files have different key sets.")
+
+            # Check all Parquet schemas are the same
+            if ".parquet" in formats and len(parquet_schemas) > 1:
+                for f in temp_files:
+                    if os.path.exists(f):
+                        os.remove(f)
+                raise RuntimeError("Parquet files have different schemas.")
+
+            # Check all Avro schemas are the same
+            if ".avro" in formats and len(avro_schemas) > 1:
+                for f in temp_files:
+                    if os.path.exists(f):
+                        os.remove(f)
+                raise RuntimeError("Avro files have different schemas.")
 
             for key in s3_keys:
                 local_file = os.path.join("/tmp/", key.replace("/", "_"))
