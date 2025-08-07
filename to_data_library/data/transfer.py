@@ -585,10 +585,19 @@ class Client:
             >>>                 gs_bucket_name='my-gcs-bucket')
         """
 
+        # Handle deprecated object_name parameter
+        if s3_key is None and object_name is not None:
+            logs.client.logger.warning(
+                "The 'object_name' parameter is deprecated. Please use 's3_key' instead."
+            )
+            s3_key = object_name
+
+        if s3_key is None:
+            raise ValueError("You must provide either s3_key or object_name.")
+
         # Download S3 file to local
         s3_client = s3.Client(aws_session)
         local_file = os.path.join("/tmp/", s3_key)
-        # s3_client.download(bucket_name, s3_key, local_file)
         s3_keys = self._get_keys_in_s3_bucket(
             aws_session=aws_session,
             bucket_name=bucket_name,
@@ -597,6 +606,12 @@ class Client:
 
         if not s3_keys:
             raise FileNotFoundError(f"No files found in S3 bucket '{bucket_name}'")
+
+        if object_name is not None and len(s3_keys) > 1:
+            raise ValueError(
+                "Multiple files matched for deprecated 'object_name' parameter. "
+                "This parameter only supports single file loads. Use 's3_key' for multi-file support."
+            )
 
         if len(s3_keys) > 1:
             if not allow_multi_file:
