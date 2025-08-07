@@ -22,7 +22,9 @@ class Client:
         self.project = project
         self.impersonated_credentials = impersonated_credentials
 
-    def bq_to_gs(self, table, bucket_name, separator=',', print_header=True, compress=False):
+    def bq_to_gs(
+        self, table, bucket_name, separator=",", print_header=True, compress=False
+    ):
         """Extract BigQuery table into the GoogleStorage
 
         Args:
@@ -42,42 +44,48 @@ class Client:
             >>> client = transfer.Client(project='my-project-id')
             >>> client.bq_to_gs('my-project-id.some_dataset.some_table', 'some-bucket-name')
         """
-        project, dataset_id, table_id = table.split('.')
-        dataset_ref = bigquery.DatasetReference(
-            project=project, dataset_id=dataset_id)
+        project, dataset_id, table_id = table.split(".")
+        dataset_ref = bigquery.DatasetReference(project=project, dataset_id=dataset_id)
         table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
         bq_client = bigquery.Client(project=self.project)
         logs.client.logger.info(
-            'Extracting from {table} to gs://{bucket_name}/{table_id}_*'.format(
-                bucket_name=bucket_name, table_id=table_id, table=table)
+            "Extracting from {table} to gs://{bucket_name}/{table_id}_*".format(
+                bucket_name=bucket_name, table_id=table_id, table=table
+            )
         )
         extract_job = bq_client.extract_table(
             source=table_ref,
-            destination_uris='gs://{bucket_name}/{table_id}_*'.format(
-                bucket_name=bucket_name, table_id=table_id),
+            destination_uris="gs://{bucket_name}/{table_id}_*".format(
+                bucket_name=bucket_name, table_id=table_id
+            ),
             job_config=bigquery.ExtractJobConfig(
                 field_delimiter=separator,
                 print_header=print_header,
-                compression=bigquery.Compression.GZIP if compress else None
-            )
+                compression=bigquery.Compression.GZIP if compress else None,
+            ),
         )
         extract_job.result()
         storage_client = storage.Client(project=self.project)
         logs.client.logger.info(
-            'Getting the list of available blobs in gs://{}'.format(bucket_name))
+            "Getting the list of available blobs in gs://{}".format(bucket_name)
+        )
         blobs = storage_client.list_blobs(bucket_name)
-        return ['gs://{}/{}'.format(bucket_name, blob.name) for blob in blobs]
+        return ["gs://{}/{}".format(bucket_name, blob.name) for blob in blobs]
 
-    def gs_to_bq(self, gs_uris, table,
-                 write_preference,
-                 auto_detect: bool = True,
-                 skip_leading_rows: bool = True,
-                 separator: str = None,
-                 source_format: str = 'CSV',
-                 schema: List[bigquery.SchemaField] = None,
-                 partition_date: str = None,
-                 partition_field: str = None,
-                 max_bad_records: int = 0):
+    def gs_to_bq(
+        self,
+        gs_uris,
+        table,
+        write_preference,
+        auto_detect: bool = True,
+        skip_leading_rows: bool = True,
+        separator: str = None,
+        source_format: str = "CSV",
+        schema: List[bigquery.SchemaField] = None,
+        partition_date: str = None,
+        partition_field: str = None,
+        max_bad_records: int = 0,
+    ):
         """Load file from Google Storage into the BigQuery table
 
         Args:
@@ -113,31 +121,33 @@ class Client:
             >>> client = transfer.Client(project='my-project-id')
             >>> client.gs_to_bq(gs_uris='gs://my-bucket-name/my-filename',table='my-project-id.my_dataset.my_table')
         """
-        project, dataset_id, table_id = table.split('.')
-        dataset_ref = bigquery.DatasetReference(
-            project=project, dataset_id=dataset_id)
+        project, dataset_id, table_id = table.split(".")
+        dataset_ref = bigquery.DatasetReference(project=project, dataset_id=dataset_id)
 
         job_config = bigquery.LoadJobConfig(
             autodetect=auto_detect,
             write_disposition=get_bq_write_disposition(write_preference),
             allow_quoted_newlines=True,
-            max_bad_records=max_bad_records
+            max_bad_records=max_bad_records,
         )
 
         if skip_leading_rows:
             job_config.skip_leading_rows = 1
 
-        if (partition_date and not partition_field):
+        if partition_date and not partition_field:
             job_config.time_partitioning = bigquery.TimePartitioning(
-                type_=bigquery.TimePartitioningType.DAY)
-            table_id += '${}'.format(partition_date)
-        elif (partition_date and partition_field):
+                type_=bigquery.TimePartitioningType.DAY
+            )
+            table_id += "${}".format(partition_date)
+        elif partition_date and partition_field:
             job_config.time_partitioning = bigquery.TimePartitioning(
-                type_=bigquery.TimePartitioningType.DAY, field=partition_field)
-            table_id += '${}'.format(partition_date)
-        elif (partition_field and not partition_date and write_preference == 'truncate'):
+                type_=bigquery.TimePartitioningType.DAY, field=partition_field
+            )
+            table_id += "${}".format(partition_date)
+        elif partition_field and not partition_date and write_preference == "truncate":
             logs.client.logger.error(
-                "Error if partition_field is supplied partitioned_date must also be supplied")
+                "Error if partition_field is supplied partitioned_date must also be supplied"
+            )
             sys.exit(1)
 
         table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
@@ -149,45 +159,53 @@ class Client:
             if isinstance(schema[0], bigquery.SchemaField):
                 job_config.schema = schema
             else:
-                job_config.schema = [bigquery.SchemaField(field[0], field[1]) for field in schema]
+                job_config.schema = [
+                    bigquery.SchemaField(field[0], field[1]) for field in schema
+                ]
 
         # Define the source format
-        if source_format == 'CSV':
+        if source_format == "CSV":
             job_config.source_format = bigquery.SourceFormat.CSV
-        elif source_format == 'JSON':
+        elif source_format == "JSON":
             job_config.source_format = bigquery.SourceFormat.NEWLINE_DELIMITED_JSON
-        elif source_format == 'AVRO':
+        elif source_format == "AVRO":
             job_config.source_format = bigquery.SourceFormat.AVRO
-        elif source_format == 'PARQUET':
+        elif source_format == "PARQUET":
             job_config.source_format = bigquery.SourceFormat.PARQUET
         else:
-            logs.client.logger.error(
-                f"Invalid SourceFormat entered: {source_format}")
+            logs.client.logger.error(f"Invalid SourceFormat entered: {source_format}")
             sys.exit(1)
 
-        bq_client = bq.Client(project,
-                              impersonated_credentials=self.impersonated_credentials)
+        bq_client = bq.Client(
+            project, impersonated_credentials=self.impersonated_credentials
+        )
         try:
             bq_client.create_dataset(dataset_id)
         except exceptions.Conflict:
-            logs.client.logger.info(
-                'Dataset {} Already exists'.format(dataset_id))
+            logs.client.logger.info("Dataset {} Already exists".format(dataset_id))
 
         logs.client.logger.info(
-            'Loading BigQuery table {} from {}'.format(table, gs_uris))
+            "Loading BigQuery table {} from {}".format(table, gs_uris)
+        )
 
         try:
             # Start the load job
-            bq_client.load_table_from_uris(
-                gs_uris, table_ref, job_config=job_config
-            )
+            bq_client.load_table_from_uris(gs_uris, table_ref, job_config=job_config)
 
         except Exception as e:
             logs.client.logger.error(f"Unexpected error occurred: {e}")
             return False, str(e)
 
-    def gs_parquet_to_bq(self, gs_uris, table, write_preference, auto_detect=True,
-                         schema=(), partition_date=None, max_bad_records=0):
+    def gs_parquet_to_bq(
+        self,
+        gs_uris,
+        table,
+        write_preference,
+        auto_detect=True,
+        schema=(),
+        partition_date=None,
+        max_bad_records=0,
+    ):
         """Load file from Google Storage into the BigQuery table
 
         Args:
@@ -214,44 +232,57 @@ class Client:
             >>> client = transfer.Client(project='my-project-id')
             >>> client.gs_to_bq(gs_uris='gs://my-bucket-name/my-filename',table='my-project-id.my_dataset.my_table')
         """
-        project, dataset_id, table_id = table.split('.')
-        dataset_ref = bigquery.DatasetReference(
-            project=project, dataset_id=dataset_id)
+        project, dataset_id, table_id = table.split(".")
+        dataset_ref = bigquery.DatasetReference(project=project, dataset_id=dataset_id)
         table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
 
         job_config = bigquery.LoadJobConfig(
             source_format=bigquery.SourceFormat.PARQUET,
             autodetect=auto_detect if not schema else False,
             write_disposition=get_bq_write_disposition(write_preference),
-            max_bad_records=max_bad_records
+            max_bad_records=max_bad_records,
         )
 
         if partition_date:
             job_config.time_partitioning = bigquery.TimePartitioning(
-                type_=bigquery.TimePartitioningType.DAY)
-            table_id += '${}'.format(partition_date)
+                type_=bigquery.TimePartitioningType.DAY
+            )
+            table_id += "${}".format(partition_date)
 
-        bq_client = bq.Client(project=project,
-                              impersonated_credentials=self.impersonated_credentials)
+        bq_client = bq.Client(
+            project=project, impersonated_credentials=self.impersonated_credentials
+        )
         try:
             bq_client.create_dataset(dataset_id)
         except exceptions.Conflict:
-            logs.client.logger.info(
-                'Dataset {} Already exists'.format(dataset_id))
+            logs.client.logger.info("Dataset {} Already exists".format(dataset_id))
 
         if schema:
             if isinstance(schema[0], bigquery.SchemaField):
                 job_config.schema = schema
             else:
-                job_config.schema = [bigquery.SchemaField(field[0], field[1]) for field in schema]
+                job_config.schema = [
+                    bigquery.SchemaField(field[0], field[1]) for field in schema
+                ]
 
         logs.client.logger.info(
-            'Loading BigQuery table {} from {}'.format(table, gs_uris))
+            "Loading BigQuery table {} from {}".format(table, gs_uris)
+        )
         bq_client.load_table_from_uris(
-            gs_uris=gs_uris, table_ref=table_ref, job_config=job_config)
+            gs_uris=gs_uris, table_ref=table_ref, job_config=job_config
+        )
 
-    def ftp_to_bq(self, ftp_connection_string, ftp_filepath, bq_table, write_preference, separator=',',
-                  skip_leading_rows=True, bq_table_schema=None, partition_date=None):
+    def ftp_to_bq(
+        self,
+        ftp_connection_string,
+        ftp_filepath,
+        bq_table,
+        write_preference,
+        separator=",",
+        skip_leading_rows=True,
+        bq_table_schema=None,
+        partition_date=None,
+    ):
         """Export from FTP to BigQuery
 
         Args:
@@ -289,8 +320,9 @@ class Client:
         local_file = ftp_client.download_file(ftp_filepath)
 
         # upload the ftp file into BigQuery
-        bq_client = bq.Client(project=self.project,
-                              impersonated_credentials=self.impersonated_credentials)
+        bq_client = bq.Client(
+            project=self.project, impersonated_credentials=self.impersonated_credentials
+        )
         bq_client.upload_table(
             file_path=local_file,
             table=bq_table,
@@ -298,10 +330,17 @@ class Client:
             skip_leading_rows=skip_leading_rows,
             write_preference=write_preference,
             schema=bq_table_schema,
-            partition_date=partition_date
+            partition_date=partition_date,
         )
 
-    def bq_to_ftp(self, bq_table, ftp_connection_string, ftp_filepath, separator=',', print_header=True):
+    def bq_to_ftp(
+        self,
+        bq_table,
+        ftp_connection_string,
+        ftp_filepath,
+        separator=",",
+        print_header=True,
+    ):
         """Export from BigQuery to FTP
 
         Args:
@@ -323,25 +362,23 @@ class Client:
 
         """
         # download the the BigQuery table into local
-        bq_client = bq.Client(project=self.project,
-                              impersonated_credentials=self.impersonated_credentials)
+        bq_client = bq.Client(
+            project=self.project, impersonated_credentials=self.impersonated_credentials
+        )
         local_files = bq_client.download_table(
-            table=bq_table,
-            separator=separator,
-            print_header=print_header
+            table=bq_table, separator=separator, print_header=print_header
         )
 
         # merge the files if they are more than one
         if len(local_files) > 1:
-            logs.client.logger.info('Merging {}'.format(','.join(local_files)))
+            logs.client.logger.info("Merging {}".format(",".join(local_files)))
             merged_file = merge_files(local_files)
         else:
             merged_file = local_files[0]
 
         # upload the merged file
         ftp_client = ftp.Client(connection_string=ftp_connection_string)
-        ftp_client.upload_file(local_path=merged_file,
-                               remote_path=ftp_filepath)
+        ftp_client.upload_file(local_path=merged_file, remote_path=ftp_filepath)
 
     def gs_to_s3(self, aws_session, gs_uri, s3_bucket):
         """
@@ -361,16 +398,23 @@ class Client:
         """
 
         local_file = os.path.basename(gs_uri)
-        gs_client = gs.Client(self.project,
-                              impersonated_credentials=self.impersonated_credentials)
+        gs_client = gs.Client(
+            self.project, impersonated_credentials=self.impersonated_credentials
+        )
         gs_client.download(gs_uri, local_file)
 
         s3_client = s3.Client(aws_session)
-        s3_client.upload(local_file,
-                         s3_bucket)
+        s3_client.upload(local_file, s3_bucket)
 
-    def s3_to_gs(self, aws_session, s3_bucket_name,
-                 s3_object_name, gs_bucket_name, gs_file_name=None, wildcard=None):
+    def s3_to_gs(
+        self,
+        aws_session,
+        s3_bucket_name,
+        s3_object_name,
+        gs_bucket_name,
+        gs_file_name=None,
+        wildcard=None,
+    ):
         """
         Exports file(s) from S3 bucket to Google storage bucket
         Added threading to speed up execution
@@ -394,48 +438,62 @@ class Client:
         """
 
         # Retrieve the file(s) from S3 matching to the object
-        logs.client.logger.info('Finding files in S3 bucket')
+        logs.client.logger.info("Finding files in S3 bucket")
 
         if not wildcard:
-            wildcard = '.*'
+            wildcard = ".*"
 
         s3_files = self._get_keys_in_s3_bucket(
             aws_session=aws_session,
             bucket_name=s3_bucket_name,
             prefix_name=s3_object_name,
-            wildcard=wildcard)
+            wildcard=wildcard,
+        )
 
-        logs.client.logger.info(f'Found {str(s3_files)} files in S3')
+        logs.client.logger.info(f"Found {str(s3_files)} files in S3")
 
         # For every key found in s3, download to local and then upload to desired GS bucket.
         s3_client = s3.Client(aws_session)
-        gs_client = gs.Client(self.project, impersonated_credentials=self.impersonated_credentials)
+        gs_client = gs.Client(
+            self.project, impersonated_credentials=self.impersonated_credentials
+        )
 
         for s3_file in s3_files:
             # Try to download the file to 'local'
             try:
                 local_file = s3_client.download(s3_bucket_name, s3_file)
-                logs.client.logger.info(f'Successfully downloaded {local_file} to local')
+                logs.client.logger.info(
+                    f"Successfully downloaded {local_file} to local"
+                )
             except Exception as e:
-                logs.client.logger.error(f"Failed to download {local_file} to local: {e}")
+                logs.client.logger.error(
+                    f"Failed to download {local_file} to local: {e}"
+                )
 
-            gs_file_name = (gs_file_name if gs_file_name is not None else s3_file) \
-                if len(s3_files) == 1 else s3_file
+            gs_file_name = (
+                (gs_file_name if gs_file_name is not None else s3_file)
+                if len(s3_files) == 1
+                else s3_file
+            )
 
             # Try to upload file from local to GCS.
             try:
                 gs_client.upload(local_file, gs_bucket_name, gs_file_name)
                 logs.client.logger.info(
-                    f'Successfully uploaded {local_file} to {gs_bucket_name}/{gs_file_name}')
+                    f"Successfully uploaded {local_file} to {gs_bucket_name}/{gs_file_name}"
+                )
             except Exception as e:
                 logs.client.logger.error(
-                    f"Failed to upload {local_file} to {gs_bucket_name}/{gs_file_name}: {e}")
+                    f"Failed to upload {local_file} to {gs_bucket_name}/{gs_file_name}: {e}"
+                )
             finally:
                 if os.path.exists(local_file):
                     os.remove(local_file)
-                    logs.client.logger.info(f'Deleted local file {local_file}')
+                    logs.client.logger.info(f"Deleted local file {local_file}")
 
-    def _get_keys_in_s3_bucket(self, aws_session, bucket_name, prefix_name, wildcard='.*'):
+    def _get_keys_in_s3_bucket(
+        self, aws_session, bucket_name, prefix_name, wildcard=".*"
+    ):
         """Generate a list of keys for objects in an s3 bucket.
         Paginates the list_objects_v2 method to overcome 1000 key limit.
 
@@ -448,19 +506,19 @@ class Client:
         Returns:
             list: List of keys in that bucket that match the desired prefix
         """
-        s3_client_boto = aws_session.client('s3')
+        s3_client_boto = aws_session.client("s3")
         s3_files = []
-        paginator = s3_client_boto.get_paginator('list_objects_v2')
+        paginator = s3_client_boto.get_paginator("list_objects_v2")
 
         regex = re.compile(wildcard)
 
         pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix_name)
         for page in pages:
             print(f"page: {page}")
-            for obj in page.get('Contents', []):
-                key = obj['Key']
-                if not key.endswith('/') and re.match(regex, key):
-                    s3_files.append(obj.get('Key'))
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+                if not key.endswith("/") and re.match(regex, key):
+                    s3_files.append(obj.get("Key"))
 
         return s3_files
 
@@ -468,24 +526,23 @@ class Client:
         self,
         aws_session,
         bucket_name,
-        s3_key=None, # New multi file parameter
-        object_name=None, # Deprecated, use s3_key instead
         bq_table,
         write_preference,
+        s3_key=None,  # New multi file parameter
+        object_name=None,  # Deprecated, use s3_key instead
         auto_detect=True,
-        separator=',',
+        separator=",",
         skip_leading_rows=True,
         schema=None,
         partition_date=None,
         partition_field=None,
-        source_format='CSV',
+        source_format="CSV",
         max_bad_records=0,
         gs_bucket_name=None,
         gs_file_name=None,
-        multi_file_limit=10, #tbc
-        allow_multi_file=False
+        multi_file_limit=10,  # tbc
+        allow_multi_file=False,
     ):
-
         """
         Exports S3 file to BigQuery table via GCS staging.
 
@@ -527,7 +584,7 @@ class Client:
 
         # Download S3 file to local
         s3_client = s3.Client(aws_session)
-        local_file = os.path.join('/tmp/', s3_key)
+        local_file = os.path.join("/tmp/", s3_key)
         # s3_client.download(bucket_name, s3_key, local_file)
         s3_keys = self._get_keys_in_s3_bucket(
             aws_session=aws_session,
@@ -535,8 +592,6 @@ class Client:
             prefix_name=s3_key,
         )
 
-
-        # Raise warnings if no files found or multiple files found without right parameters
         if not s3_keys:
             raise FileNotFoundError(f"No files found in S3 bucket '{bucket_name}'")
 
@@ -554,26 +609,32 @@ class Client:
 
         if len(s3_keys) == 1:
             s3_key = s3_keys[0]
-            local_file = os.path.join('/tmp/', s3_key.replace('/', '_'))
+            local_file = os.path.join("/tmp/", s3_key.replace("/", "_"))
             s3_client.download(bucket_name, s3_key, local_file)
 
             # Upload local file to GCS
             if not gs_bucket_name:
-                logs.client.logger.error("gs_bucket_name must be provided to stage file in GCS before loading to BQ")
+                logs.client.logger.error(
+                    "gs_bucket_name must be provided to stage file in GCS before loading to BQ"
+                )
                 raise ValueError("gs_bucket_name must be provided")
-            gs_client = gs.Client(self.project, impersonated_credentials=self.impersonated_credentials)
+            gs_client = gs.Client(
+                self.project, impersonated_credentials=self.impersonated_credentials
+            )
             gs_file_name = gs_file_name if gs_file_name else s3_key
             gs_client.upload(local_file, gs_bucket_name, gs_file_name)
             gs_uri = f"gs://{gs_bucket_name}/{gs_file_name}"
 
-            project, dataset_id, table_id = bq_table.split('.')
-            dataset_ref = bigquery.DatasetReference(project=project, dataset_id=dataset_id)
+            project, dataset_id, table_id = bq_table.split(".")
+            dataset_ref = bigquery.DatasetReference(
+                project=project, dataset_id=dataset_id
+            )
 
             job_config = bigquery.LoadJobConfig(
                 autodetect=auto_detect,
                 write_disposition=get_bq_write_disposition(write_preference),
                 allow_quoted_newlines=True,
-                max_bad_records=max_bad_records
+                max_bad_records=max_bad_records,
             )
 
             if skip_leading_rows:
@@ -582,19 +643,22 @@ class Client:
             # Partitioning logic (same as gs_to_bq)
             if partition_date and not partition_field:
                 job_config.time_partitioning = bigquery.TimePartitioning(
-                        type_=bigquery.TimePartitioningType.DAY
-                    )
-                table_id += f'${partition_date}'
+                    type_=bigquery.TimePartitioningType.DAY
+                )
+                table_id += f"${partition_date}"
             elif partition_date and partition_field:
                 job_config.time_partitioning = bigquery.TimePartitioning(
-                        type_=bigquery.TimePartitioningType.DAY,
-                        field=partition_field
-                    )
-                table_id += f'${partition_date}'
-            elif partition_field and not partition_date and write_preference == 'truncate':
+                    type_=bigquery.TimePartitioningType.DAY, field=partition_field
+                )
+                table_id += f"${partition_date}"
+            elif (
+                partition_field
+                and not partition_date
+                and write_preference == "truncate"
+            ):
                 logs.client.logger.error(
-                        "Error: if partition_field is supplied, partition_date must also be supplied"
-                    )
+                    "Error: if partition_field is supplied, partition_date must also be supplied"
+                )
                 raise ValueError("partition_field supplied without partition_date")
 
             table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
@@ -603,17 +667,18 @@ class Client:
                 job_config.field_delimiter = separator
 
             # Source format
-            if source_format == 'CSV':
+            if source_format == "CSV":
                 job_config.source_format = bigquery.SourceFormat.CSV
-            elif source_format == 'JSON':
+            elif source_format == "JSON":
                 job_config.source_format = bigquery.SourceFormat.NEWLINE_DELIMITED_JSON
-            elif source_format == 'AVRO':
+            elif source_format == "AVRO":
                 job_config.source_format = bigquery.SourceFormat.AVRO
-            elif source_format == 'PARQUET':
+            elif source_format == "PARQUET":
                 job_config.source_format = bigquery.SourceFormat.PARQUET
             else:
                 logs.client.logger.error(
-                    f"Invalid SourceFormat entered: {source_format}")
+                    f"Invalid SourceFormat entered: {source_format}"
+                )
                 raise ValueError(f"Invalid SourceFormat entered: {source_format}")
 
             # Schema as tuple/list of tuples
@@ -621,15 +686,19 @@ class Client:
                 if isinstance(schema[0], bigquery.SchemaField):
                     job_config.schema = schema
                 else:
-                    job_config.schema = [bigquery.SchemaField(field[0], field[1]) for field in schema]
+                    job_config.schema = [
+                        bigquery.SchemaField(field[0], field[1]) for field in schema
+                    ]
 
-            bq_client = bq.Client(project, impersonated_credentials=self.impersonated_credentials)
+            bq_client = bq.Client(
+                project, impersonated_credentials=self.impersonated_credentials
+            )
             try:
                 bq_client.create_dataset(dataset_id)
             except exceptions.Conflict:
-                logs.client.logger.info(f'Dataset {dataset_id} Already exists')
+                logs.client.logger.info(f"Dataset {dataset_id} Already exists")
 
-            logs.client.logger.info(f'Loading BigQuery table {bq_table} from {gs_uri}')
+            logs.client.logger.info(f"Loading BigQuery table {bq_table} from {gs_uri}")
             try:
                 bq_client.load_table_from_uris(
                     [gs_uri], table_ref, job_config=job_config
@@ -640,10 +709,128 @@ class Client:
             finally:
                 if os.path.exists(local_file):
                     os.remove(local_file)
-                    logs.client.logger.info(f'Deleted local file {local_file}')
-            logs.client.logger.info('Loading completed')
-    else:
-        logs.client.logger.info(
-            f"{len(s3_keys)} files matched for s3_key='{s3_key}'. Multi-file support triggered."
-        )
-        pass # Placeholder
+                    logs.client.logger.info(f"Deleted local file {local_file}")
+            logs.client.logger.info("Loading completed")
+        else:
+            logs.client.logger.info(
+                f"{len(s3_keys)} files matched for s3_key='{s3_key}'. Multi-file support triggered."
+            )
+            if not gs_bucket_name:
+                logs.client.logger.error(
+                    "gs_bucket_name must be provided to stage files in GCS before loading to BQ"
+                )
+                raise ValueError("gs_bucket_name must be provided")
+
+            gs_client = gs.Client(
+                self.project, impersonated_credentials=self.impersonated_credentials
+            )
+            local_files = []
+            gs_uris = []
+
+            for key in s3_keys:
+                local_file = os.path.join("/tmp/", key.replace("/", "_"))
+                try:
+                    s3_client.download(bucket_name, key, local_file)
+                    logs.client.logger.info(f"Downloaded {key} to {local_file}")
+                    gs_file = (
+                        key
+                        if not gs_file_name
+                        else f"{gs_file_name}_{os.path.basename(key)}"
+                    )
+                    gs_client.upload(local_file, gs_bucket_name, gs_file)
+                    gs_uri = f"gs://{gs_bucket_name}/{gs_file}"
+                    gs_uris.append(gs_uri)
+                    local_files.append(local_file)
+                except Exception as e:
+                    logs.client.logger.error(f"Failed to process {key}: {e}")
+                    continue
+
+            if not gs_uris:
+                raise RuntimeError(
+                    "No files were uploaded to GCS, aborting load to BigQuery."
+                )
+
+            project, dataset_id, table_id = bq_table.split(".")
+            dataset_ref = bigquery.DatasetReference(
+                project=project, dataset_id=dataset_id
+            )
+
+            job_config = bigquery.LoadJobConfig(
+                autodetect=auto_detect,
+                write_disposition=get_bq_write_disposition(write_preference),
+                allow_quoted_newlines=True,
+                max_bad_records=max_bad_records,
+            )
+
+            if skip_leading_rows:
+                job_config.skip_leading_rows = 1
+
+            if partition_date and not partition_field:
+                job_config.time_partitioning = bigquery.TimePartitioning(
+                    type_=bigquery.TimePartitioningType.DAY
+                )
+                table_id += f"${partition_date}"
+            elif partition_date and partition_field:
+                job_config.time_partitioning = bigquery.TimePartitioning(
+                    type_=bigquery.TimePartitioningType.DAY, field=partition_field
+                )
+                table_id += f"${partition_date}"
+            elif (
+                partition_field
+                and not partition_date
+                and write_preference == "truncate"
+            ):
+                logs.client.logger.error(
+                    "Error: if partition_field is supplied, partition_date must also be supplied"
+                )
+                raise ValueError("partition_field supplied without partition_date")
+
+            table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
+
+            if separator:
+                job_config.field_delimiter = separator
+
+            if source_format == "CSV":
+                job_config.source_format = bigquery.SourceFormat.CSV
+            elif source_format == "JSON":
+                job_config.source_format = bigquery.SourceFormat.NEWLINE_DELIMITED_JSON
+            elif source_format == "AVRO":
+                job_config.source_format = bigquery.SourceFormat.AVRO
+            elif source_format == "PARQUET":
+                job_config.source_format = bigquery.SourceFormat.PARQUET
+            else:
+                logs.client.logger.error(
+                    f"Invalid SourceFormat entered: {source_format}"
+                )
+                raise ValueError(f"Invalid SourceFormat entered: {source_format}")
+
+            if schema:
+                if isinstance(schema[0], bigquery.SchemaField):
+                    job_config.schema = schema
+                else:
+                    job_config.schema = [
+                        bigquery.SchemaField(field[0], field[1]) for field in schema
+                    ]
+
+            bq_client = bq.Client(
+                project, impersonated_credentials=self.impersonated_credentials
+            )
+            try:
+                bq_client.create_dataset(dataset_id)
+            except exceptions.Conflict:
+                logs.client.logger.info(f"Dataset {dataset_id} Already exists")
+
+            logs.client.logger.info(f"Loading BigQuery table {bq_table} from {gs_uris}")
+            try:
+                bq_client.load_table_from_uris(
+                    gs_uris, table_ref, job_config=job_config
+                )
+            except Exception as e:
+                logs.client.logger.error(f"Unexpected error occurred: {e}")
+                return False, str(e)
+            finally:
+                for local_file in local_files:
+                    if os.path.exists(local_file):
+                        os.remove(local_file)
+                        logs.client.logger.info(f"Deleted local file {local_file}")
+            logs.client.logger.info("Loading completed")
