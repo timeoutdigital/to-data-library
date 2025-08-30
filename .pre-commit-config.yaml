@@ -13,16 +13,14 @@ repos:
   -  id: detect-private-key
   -  id: no-commit-to-branch
   -  id: check-added-large-files
-- repo: https://github.com/pycqa/isort
-  rev: 5.12.0
+- repo: https://github.com/astral-sh/ruff-pre-commit
+  rev: v0.4.0
   hooks:
-  - id: isort
-- repo: https://github.com/PyCQA/flake8
-  rev: 6.1.0
+  - id: ruff-check
+    args: [--fix]
+  - id: ruff-format
+- repo: https://github.com/sqlfluff/sqlfluff
+  rev: 3.4.0
   hooks:
-  - id: flake8
-    additional_dependencies:
-    - flake8-bugbear
-    - flake8-comprehensions
-    - flake8-tidy-imports
-    - flake8-typing-imports
+    - id: sqlfluff-lint
+    - id: sqlfluff-fix
