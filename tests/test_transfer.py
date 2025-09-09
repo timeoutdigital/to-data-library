@@ -44,6 +44,7 @@ class TestTransfer(unittest.TestCase):
         mock_loadjobconfig.return_value.write_disposition = 'WRITE_TRUNCATE'
         mock_loadjobconfig.return_value.allow_quoted_newlines = True
         mock_loadjobconfig.return_value.max_bad_records = 10
+        mock_loadjobconfig.return_value.schema_update_options = ['ALLOW_FIELD_ADDITION']
 
         # Mock load_table_from_uris on the bq.Client
         mock_bq_client.return_value.load_table_from_uris = Mock()
@@ -53,7 +54,8 @@ class TestTransfer(unittest.TestCase):
             gs_uris="gs://{}/{}".format('fake_bucket_name', 'sample.csv'),
             table='{}.{}.{}'.format('fake_project_name', 'fake_dataset_id', 'fake_table_id'),
             write_preference='truncate',
-            max_bad_records=10
+            max_bad_records=10,
+            schema_update_options=['ALLOW_FIELD_ADDITION']
         )
 
         mock_datasetreference.assert_called_with(project='fake_project_name', dataset_id='fake_dataset_id')
@@ -71,6 +73,7 @@ class TestTransfer(unittest.TestCase):
         self.assertEqual(job_config.write_disposition, 'WRITE_TRUNCATE')
         self.assertEqual(job_config.allow_quoted_newlines, True)
         self.assertEqual(job_config.max_bad_records, 10)
+        self.assertEqual(job_config.schema_update_options, ['ALLOW_FIELD_ADDITION'])
 
         # Assert load_table_from_uris is called with the right parameters
         mock_bq_client.return_value.load_table_from_uris.assert_called_once_with(
