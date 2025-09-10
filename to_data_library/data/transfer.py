@@ -183,7 +183,7 @@ class Client:
 
         try:
             # Start the load job
-            bq_client.load_table_from_uris(
+            return bq_client.load_table_from_uris(
                 gs_uris, table_ref, job_config=job_config
             )
 
