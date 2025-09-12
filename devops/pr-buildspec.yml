@@ -20,4 +20,4 @@ phases:
     commands:
     - SKIP=no-commit-to-branch pre-commit run --all-files
     - coverage run -m unittest
-    - coverage report --fail-under=58
+    - coverage report --fail-under=78
