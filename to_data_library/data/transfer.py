@@ -593,8 +593,8 @@ class Client:
 
         # BigQuery load job
         bq_client = bq.Client(self.project, impersonated_credentials=self.impersonated_credentials)
-        dataset_id, table_id = bq_table.split(".")[1:]
-        dataset_ref = bigquery.DatasetReference(self.project, dataset_id)
+        project, dataset_id, table_id = bq_table.split('.')
+        dataset_ref = bigquery.DatasetReference(project, dataset_id)
         table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
 
         write_disposition = {
