@@ -1,11 +1,10 @@
-import json
 import os
 import re
 import sys
+import tempfile
 from typing import List
 
-import pyarrow.parquet as pq
-from fastavro import reader as avro_reader
+import pandas as pd
 from google.api_core import exceptions
 from google.cloud import bigquery, storage
 
@@ -529,419 +528,101 @@ class Client:
         self,
         aws_session,
         bucket_name,
+        s3_key,
         bq_table,
-        write_preference,
-        s3_key=None,  # New multi file parameter
-        object_name=None,  # Deprecated, use s3_key instead
-        auto_detect=True,
-        separator=",",
-        skip_leading_rows=True,
-        schema=None,
-        partition_date=None,
-        partition_field=None,
-        source_format="CSV",
-        max_bad_records=0,
+        write_preference="truncate",
         gs_bucket_name=None,
-        gs_file_name=None,
-        multi_file_limit=10,  # tbc
-        allow_multi_file=False,
+        transform_fn=None,
+        schema=None,
+        partition_field=None,
+        partition_date=None,
     ):
         """
-        Exports S3 file to BigQuery table via GCS staging.
+        Transfer CSV files from S3 → GCS → BigQuery with optional transformations and partitioning.
 
         Args:
-        aws_session: authenticated AWS session.
-        bucket_name (str): s3 bucket name
-        s3_key (str): s3 object prefix name/s to copy
-        object_name (str): Deprecated. Use `s3_key` instead.
-        bq_table (str): The BigQuery table. For example: ``my-project-id.my-dataset.my-table``
-        write_preference (str): The option to specify what action to take when you load data from a source file.
-            Value can be one of
-                ``'empty'``: Writes the data only if the table is empty.
-                ``'append'``: Appends the data to the end of the table.
-                ``'truncate'``: Erases all existing data in a table before writing the new data.
-        auto_detect (boolean, Optional):  True if the schema should automatically be detected otherwise False.
-            Defaults to `True`.
-        separator (str, optional): The separator. Defaults to `,`.
-        skip_leading_rows (boolean, Optional):  True to skip the first row of the file otherwise False. Defaults to
-            `True`.
-        schema (tuple, optional): The BigQuery table schema. For example: ``(('first_field','STRING'),
-        ('second_field', 'STRING'))``
-        partition_date (str, Optional): The ingestion date for partitioned BigQuery table. For example: ``20210101``.
-        partition_field (str, Optional): The field on which the destination table is partitioned.
-        The field must be a top-level TIMESTAMP or DATE field. Must be used in conjunction with partition_date.
-        source_format (str, Optional): The file format (CSV, JSON, PARQUET or AVRO). Defaults to 'CSV'.
-        max_bad_records (int, Optional): The maximum number of rows with errors. Defaults to 0.
-        gs_bucket_name (str, required): The GCS bucket to stage the file.
-        gs_file_name (str, optional): The name for the staged file in GCS.
-
-        Example:
-            >>> from to_data_library.data import transfer
-            >>> client = transfer.Client(project='my-project-id')
-            >>> client.s3_to_bq(aws_connection,
-            >>>                 bucket_name='my-s3-bucket_name',
-            >>>                 s3_key='my-s3-key',
-            >>>                 bq_table='my-project-id.my-dataset.my-table',
-            >>>                 gs_bucket_name='my-gcs-bucket')
+            aws_session: Authenticated AWS session
+            bucket_name (str): Source S3 bucket
+            s3_key (str): S3 prefix (e.g. "ozone/2025-09-23")
+            bq_table (str): Target BigQuery table
+            write_preference (str): "truncate", "append", or "empty"
+            gs_bucket_name (str): GCS bucket for staging
+            transform_fn (callable): Optional function applied to DataFrame
+            schema (list): BigQuery schema
+            partition_field (str): Column to use for DAY partitioning
+            partition_date (str): Partition date as 'YYYYMMDD'
         """
 
-        # Handle deprecated object_name parameter
-        if s3_key is None and object_name is not None:
-            logs.client.logger.warning(
-                "The 'object_name' parameter is deprecated. Please use 's3_key' instead."
-            )
-            s3_key = object_name
+        logs.client.logger.info(f"[s3_to_bq] Starting transfer for table: {bq_table}")
+        logs.client.logger.info(f"[s3_to_bq] S3 bucket: {bucket_name}")
+        logs.client.logger.info(f"[s3_to_bq] S3 prefix: {s3_key}")
+        logs.client.logger.info(f"[s3_to_bq] Write preference: {write_preference}")
 
-        if s3_key is None:
-            raise ValueError("You must provide either s3_key or object_name.")
-
-        # Download S3 file to local
         s3_client = s3.Client(aws_session)
-        local_file = os.path.join("/tmp/", s3_key)
-        s3_keys = self._get_keys_in_s3_bucket(
-            aws_session=aws_session,
-            bucket_name=bucket_name,
-            prefix_name=s3_key,
+        files = s3_client.list_files(bucket_name, path=s3_key)
+        if not files:
+            logs.client.logger.error(f"[s3_to_bq] No files found in S3 at prefix: '{s3_key}'")
+            return False, []
+
+        logs.client.logger.info(f"[s3_to_bq] Found {len(files)} file(s): {[f['name'] for f in files]}")
+
+        staged_uris = []
+        gs_client = gs.Client(self.project, impersonated_credentials=self.impersonated_credentials)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for file in files:
+                local_file = os.path.join(tmpdir, os.path.basename(file["name"]))
+                logs.client.logger.info(f"[s3_to_bq] Downloading S3 file {file['name']} → {local_file}")
+                s3_client.download(bucket_name, file["name"], local_path=local_file)
+
+                if transform_fn:
+                    df = pd.read_csv(local_file)
+                    df = transform_fn(df)
+                    df.to_csv(local_file, index=False)
+                    logs.client.logger.info("[s3_to_bq] Applied transform_fn and saved transformed CSV")
+
+                gs_file_name = os.path.basename(file["name"])
+                gs_client.upload(local_file, gs_bucket_name, gs_file_name)
+                gs_uri = f"gs://{gs_bucket_name}/{gs_file_name}"
+                staged_uris.append(gs_uri)
+                logs.client.logger.info(f"[s3_to_bq] Uploaded to GCS: {gs_uri}")
+
+        # BigQuery load job
+        bq_client = bq.Client(self.project, impersonated_credentials=self.impersonated_credentials)
+        dataset_id, table_id = bq_table.split(".")[1:]
+        dataset_ref = bigquery.DatasetReference(self.project, dataset_id)
+        table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
+
+        write_disposition = {
+            "truncate": bigquery.WriteDisposition.WRITE_TRUNCATE,
+            "append": bigquery.WriteDisposition.WRITE_APPEND,
+            "empty": bigquery.WriteDisposition.WRITE_EMPTY,
+        }.get(write_preference.lower(), bigquery.WriteDisposition.WRITE_TRUNCATE)
+
+        job_config = bigquery.LoadJobConfig(
+            source_format=bigquery.SourceFormat.CSV,
+            write_disposition=write_disposition,
+            autodetect=schema is None,
+            schema=schema,
+            allow_quoted_newlines=True,
+            skip_leading_rows=1,
         )
 
-        if not s3_keys:
-            raise FileNotFoundError(f"No files found in S3 bucket '{bucket_name}'")
-
-        if object_name is not None and len(s3_keys) > 1:
-            raise ValueError(
-                "Multiple files matched for deprecated 'object_name' parameter. "
-                "This parameter only supports single file loads. Use 's3_key' for multi-file support."
-            )
-
-        if len(s3_keys) > 1:
-            if not allow_multi_file:
-                raise ValueError(
-                    f"Multiple files matched for s3_key='{s3_key}', but allow_multi_file is False. "
-                    f"Matched files: {s3_keys}"
-                )
-        if len(s3_keys) > multi_file_limit:
-            raise ValueError(
-                f"Too many files matched ({len(s3_keys)}). "
-                f"Limit is {multi_file_limit}. Refine your prefix or increase the limit."
-            )
-
-        if len(s3_keys) == 1:
-            s3_key = s3_keys[0]
-            local_file = os.path.join("/tmp/", s3_key.replace("/", "_"))
-            s3_client.download(bucket_name, s3_key, local_file)
-
-            # Upload local file to GCS
-            if not gs_bucket_name:
-                logs.client.logger.error(
-                    "gs_bucket_name must be provided to stage file in GCS before loading to BQ"
-                )
-                raise ValueError("gs_bucket_name must be provided")
-            gs_client = gs.Client(
-                self.project, impersonated_credentials=self.impersonated_credentials
-            )
-            gs_file_name = gs_file_name if gs_file_name else s3_key
-            gs_client.upload(local_file, gs_bucket_name, gs_file_name)
-            gs_uri = f"gs://{gs_bucket_name}/{gs_file_name}"
-
-            project, dataset_id, table_id = bq_table.split(".")
-            dataset_ref = bigquery.DatasetReference(
-                project=project, dataset_id=dataset_id
-            )
-
-            job_config = bigquery.LoadJobConfig(
-                autodetect=auto_detect,
-                write_disposition=get_bq_write_disposition(write_preference),
-                allow_quoted_newlines=True,
-                max_bad_records=max_bad_records,
-            )
-
-            if skip_leading_rows:
-                job_config.skip_leading_rows = 1
-
-            # Partitioning logic (same as gs_to_bq)
-            if partition_date and not partition_field:
-                job_config.time_partitioning = bigquery.TimePartitioning(
-                    type_=bigquery.TimePartitioningType.DAY
-                )
-                table_id += f"${partition_date}"
-            elif partition_date and partition_field:
-                job_config.time_partitioning = bigquery.TimePartitioning(
-                    type_=bigquery.TimePartitioningType.DAY, field=partition_field
-                )
-                table_id += f"${partition_date}"
-            elif (
-                partition_field
-                and not partition_date
-                and write_preference == "truncate"
-            ):
-                logs.client.logger.error(
-                    "Error: if partition_field is supplied, partition_date must also be supplied"
-                )
+        if partition_field:
+            if not partition_date:
                 raise ValueError("partition_field supplied without partition_date")
-
-            table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
-
-            if separator:
-                job_config.field_delimiter = separator
-
-            # Source format
-            if source_format == "CSV":
-                job_config.source_format = bigquery.SourceFormat.CSV
-            elif source_format == "JSON":
-                job_config.source_format = bigquery.SourceFormat.NEWLINE_DELIMITED_JSON
-            elif source_format == "AVRO":
-                job_config.source_format = bigquery.SourceFormat.AVRO
-            elif source_format == "PARQUET":
-                job_config.source_format = bigquery.SourceFormat.PARQUET
-            else:
-                logs.client.logger.error(
-                    f"Invalid SourceFormat entered: {source_format}"
-                )
-                raise ValueError(f"Invalid SourceFormat entered: {source_format}")
-
-            # Schema as tuple/list of tuples
-            if schema:
-                if isinstance(schema[0], bigquery.SchemaField):
-                    job_config.schema = schema
-                else:
-                    job_config.schema = [
-                        bigquery.SchemaField(field[0], field[1]) for field in schema
-                    ]
-
-            bq_client = bq.Client(
-                project, impersonated_credentials=self.impersonated_credentials
+            job_config.time_partitioning = bigquery.TimePartitioning(
+                type_=bigquery.TimePartitioningType.DAY,
+                field=partition_field,
             )
-            try:
-                bq_client.create_dataset(dataset_id)
-            except exceptions.Conflict:
-                logs.client.logger.info(f"Dataset {dataset_id} Already exists")
+            table_ref = bigquery.TableReference(dataset_ref, table_id=f"{table_id}${partition_date}")
 
-            logs.client.logger.info(f"Loading BigQuery table {bq_table} from {gs_uri}")
-            try:
-                bq_client.load_table_from_uris(
-                    [gs_uri], table_ref, job_config=job_config
-                )
-            except Exception as e:
-                logs.client.logger.error(f"Unexpected error occurred: {e}")
-                return False, str(e)
-            finally:
-                if os.path.exists(local_file):
-                    os.remove(local_file)
-                    logs.client.logger.info(f"Deleted local file {local_file}")
-            logs.client.logger.info("Loading completed")
-        else:
-            logs.client.logger.info(
-                f"{len(s3_keys)} files matched for s3_key='{s3_key}'. Multi-file support triggered."
-            )
-            if not gs_bucket_name:
-                logs.client.logger.error(
-                    "gs_bucket_name must be provided to stage files in GCS before loading to BQ"
-                )
-                raise ValueError("gs_bucket_name must be provided")
+        logs.client.logger.info(f"[s3_to_bq] Loading into BigQuery from staged files: {staged_uris}")
+        try:
+            bq_client.load_table_from_uris(staged_uris, table_ref, job_config=job_config)
+        except Exception as e:
+            logs.client.logger.error(f"[s3_to_bq] Failed to load table: {e}")
+            return False, staged_uris
 
-            gs_client = gs.Client(
-                self.project, impersonated_credentials=self.impersonated_credentials
-            )
-            local_files = []
-            gs_uris = []
-
-            # Check all files are the same format and structure
-            def get_file_format(filename):
-                return os.path.splitext(filename)[1].lower()
-
-            def get_csv_header(filepath):
-                with open(filepath, "r", encoding="utf-8") as f:
-                    return f.readline().strip()
-
-            def get_json_keys(filepath):
-                with open(filepath, "r", encoding="utf-8") as f:
-                    for line in f:
-                        try:
-                            obj = json.loads(line)
-                            return set(obj.keys())
-                        except Exception:
-                            continue
-                return set()
-
-            def get_parquet_schema(filepath):
-                table = pq.read_table(filepath)
-                return tuple((field.name, str(field.type)) for field in table.schema)
-
-            def get_avro_schema(filepath):
-                with open(filepath, "rb") as fo:
-                    avro_r = avro_reader(fo)
-                    schema = avro_r.schema
-                    return tuple(
-                        (field["name"], str(field["type"]))
-                        for field in schema["fields"]
-                    )
-
-            formats = set()
-            csv_headers = set()
-            json_keys = set()
-            parquet_schemas = set()
-            avro_schemas = set()
-            temp_files = []
-
-            for key in s3_keys:
-                local_file = os.path.join("/tmp/", key.replace("/", "_"))
-                try:
-                    s3_client.download(bucket_name, key, local_file)
-                    logs.client.logger.info(f"Downloaded {key} to {local_file}")
-                    temp_files.append(local_file)
-                    fmt = get_file_format(key)
-                    formats.add(fmt)
-                    if fmt == ".csv":
-                        csv_headers.add(get_csv_header(local_file))
-                    elif fmt == ".json":
-                        json_keys.add(frozenset(get_json_keys(local_file)))
-                    elif fmt == ".parquet":
-                        parquet_schemas.add(get_parquet_schema(local_file))
-                    elif fmt == ".avro":
-                        avro_schemas.add(get_avro_schema(local_file))
-                except Exception as e:
-                    logs.client.logger.error(f"Failed to process {key}: {e}")
-                    continue
-
-            # Check all formats are the same
-            if len(formats) > 1:
-                for f in temp_files:
-                    if os.path.exists(f):
-                        os.remove(f)
-                raise RuntimeError(f"Files have different formats: {formats}")
-
-            # Check all CSV headers are the same
-            if ".csv" in formats and len(csv_headers) > 1:
-                for f in temp_files:
-                    if os.path.exists(f):
-                        os.remove(f)
-                raise RuntimeError("CSV files have different headers.")
-
-            # Check all JSON keys are the same
-            if ".json" in formats and len(json_keys) > 1:
-                for f in temp_files:
-                    if os.path.exists(f):
-                        os.remove(f)
-                raise RuntimeError("JSON files have different key sets.")
-
-            # Check all Parquet schemas are the same
-            if ".parquet" in formats and len(parquet_schemas) > 1:
-                for f in temp_files:
-                    if os.path.exists(f):
-                        os.remove(f)
-                raise RuntimeError("Parquet files have different schemas.")
-
-            # Check all Avro schemas are the same
-            if ".avro" in formats and len(avro_schemas) > 1:
-                for f in temp_files:
-                    if os.path.exists(f):
-                        os.remove(f)
-                raise RuntimeError("Avro files have different schemas.")
-
-            for key in s3_keys:
-                local_file = os.path.join("/tmp/", key.replace("/", "_"))
-                try:
-                    s3_client.download(bucket_name, key, local_file)
-                    logs.client.logger.info(f"Downloaded {key} to {local_file}")
-                    gs_file = (
-                        key
-                        if not gs_file_name
-                        else f"{gs_file_name}_{os.path.basename(key)}"
-                    )
-                    gs_client.upload(local_file, gs_bucket_name, gs_file)
-                    gs_uri = f"gs://{gs_bucket_name}/{gs_file}"
-                    gs_uris.append(gs_uri)
-                    local_files.append(local_file)
-                except Exception as e:
-                    logs.client.logger.error(f"Failed to process {key}: {e}")
-                    continue
-
-            if not gs_uris:
-                raise RuntimeError(
-                    "No files were uploaded to GCS, aborting load to BigQuery."
-                )
-
-            project, dataset_id, table_id = bq_table.split(".")
-            dataset_ref = bigquery.DatasetReference(
-                project=project, dataset_id=dataset_id
-            )
-
-            job_config = bigquery.LoadJobConfig(
-                autodetect=auto_detect,
-                write_disposition=get_bq_write_disposition(write_preference),
-                allow_quoted_newlines=True,
-                max_bad_records=max_bad_records,
-            )
-
-            if skip_leading_rows:
-                job_config.skip_leading_rows = 1
-
-            if partition_date and not partition_field:
-                job_config.time_partitioning = bigquery.TimePartitioning(
-                    type_=bigquery.TimePartitioningType.DAY
-                )
-                table_id += f"${partition_date}"
-            elif partition_date and partition_field:
-                job_config.time_partitioning = bigquery.TimePartitioning(
-                    type_=bigquery.TimePartitioningType.DAY, field=partition_field
-                )
-                table_id += f"${partition_date}"
-            elif (
-                partition_field
-                and not partition_date
-                and write_preference == "truncate"
-            ):
-                logs.client.logger.error(
-                    "Error: if partition_field is supplied, partition_date must also be supplied"
-                )
-                raise ValueError("partition_field supplied without partition_date")
-
-            table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
-
-            if separator:
-                job_config.field_delimiter = separator
-
-            if source_format == "CSV":
-                job_config.source_format = bigquery.SourceFormat.CSV
-            elif source_format == "JSON":
-                job_config.source_format = bigquery.SourceFormat.NEWLINE_DELIMITED_JSON
-            elif source_format == "AVRO":
-                job_config.source_format = bigquery.SourceFormat.AVRO
-            elif source_format == "PARQUET":
-                job_config.source_format = bigquery.SourceFormat.PARQUET
-            else:
-                logs.client.logger.error(
-                    f"Invalid SourceFormat entered: {source_format}"
-                )
-                raise ValueError(f"Invalid SourceFormat entered: {source_format}")
-
-            if schema:
-                if isinstance(schema[0], bigquery.SchemaField):
-                    job_config.schema = schema
-                else:
-                    job_config.schema = [
-                        bigquery.SchemaField(field[0], field[1]) for field in schema
-                    ]
-
-            bq_client = bq.Client(
-                project, impersonated_credentials=self.impersonated_credentials
-            )
-            try:
-                bq_client.create_dataset(dataset_id)
-            except exceptions.Conflict:
-                logs.client.logger.info(f"Dataset {dataset_id} Already exists")
-
-            logs.client.logger.info(f"Loading BigQuery table {bq_table} from {gs_uris}")
-            try:
-                bq_client.load_table_from_uris(
-                    gs_uris, table_ref, job_config=job_config
-                )
-            except Exception as e:
-                logs.client.logger.error(f"Unexpected error occurred: {e}")
-                return False, str(e)
-            finally:
-                for local_file in local_files:
-                    if os.path.exists(local_file):
-                        os.remove(local_file)
-                        logs.client.logger.info(f"Deleted local file {local_file}")
-            logs.client.logger.info("Loading completed")
+        logs.client.logger.info(f"[s3_to_bq] Successfully loaded data into {bq_table}")
+        return True, staged_uris
