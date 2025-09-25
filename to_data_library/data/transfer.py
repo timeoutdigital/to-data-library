@@ -88,6 +88,7 @@ class Client:
         partition_field: str = None,
         max_bad_records: int = 0,
     ):
+
         """Load file from Google Storage into the BigQuery table
 
         Args:
@@ -117,6 +118,8 @@ class Client:
               Here partitioned_date will be used to update or alter the table using the partition
             schema (List[bigquery.SchemaField], Optional): A List of SchemaFields.
             max_bad_records (int, Optional): The maximum number of rows with errors. Defaults to :data:0
+            schema_update_options (List[bigquery.SchemaUpdateOption], Optional): A List of SchemaUpdateOptions.
+                How to update the schema when performing load/extract operations.
 
         Examples:
             >>> from to_data_library.data import transfer
@@ -131,6 +134,7 @@ class Client:
             write_disposition=get_bq_write_disposition(write_preference),
             allow_quoted_newlines=True,
             max_bad_records=max_bad_records,
+
         )
 
         if skip_leading_rows:
