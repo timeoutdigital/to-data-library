@@ -520,6 +520,10 @@ class Client:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             for file in files:
+                # Skip directory entries
+                if file["name"].endswith("/"):
+                    logs.client.logger.info(f"[s3_to_bq] Skipping directory entry: {file['name']}")
+                    continue
                 local_file = os.path.join(tmpdir, os.path.basename(file["name"]))
                 logs.client.logger.info(f"[s3_to_bq] Downloading S3 file {file['name']} → {local_file}")
                 s3_client.download(bucket_name, file["name"], local_path=local_file)
