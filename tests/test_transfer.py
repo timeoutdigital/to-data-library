@@ -1,6 +1,10 @@
+import os
+import tempfile
 import unittest
 import unittest.mock
 from unittest.mock import ANY, Mock, patch
+
+import pandas as pd
 
 from tests.setup import setup
 from to_data_library.data import transfer
@@ -111,46 +115,95 @@ class TestTransfer(unittest.TestCase):
 
         self.assertEqual(res, [])
 
-    def test_s3_to_bq_partitioning_and_config(self):
-        client = transfer.Client('fake_project_name')
-        valid_schema = [('field1', 'STRING')]
-        with patch('to_data_library.data.s3.Client') as mock_s3, \
-             patch('to_data_library.data.bq.Client') as mock_bq, \
-             patch('to_data_library.data.gs.Client') as mock_gs, \
-             patch('os.remove') as mock_remove, \
-             patch('os.path.exists', return_value=True):
-            mock_s3.return_value.download.return_value = '/tmp/file.csv'
-            mock_bq.return_value.create_dataset.return_value = None
-            mock_bq.return_value.load_table_from_uris.return_value = None
-            mock_gs.return_value.upload.return_value = None
+    @patch("to_data_library.data.bq.Client")
+    @patch("to_data_library.data.gs.Client")
+    @patch("to_data_library.data.s3.Client")
+    def test_s3_to_bq_no_files(self, mock_s3, mock_gs, mock_bq):
+        mock_s3.return_value.list_files.return_value = []
 
-            # Test with partition_date and partition_field, custom delimiter, source_format, max_bad_records
-            client.s3_to_bq(
-                aws_session=Mock(),
-                bucket_name='bucket',
-                object_name='file.csv',
-                bq_table='p.d.t',
-                write_preference='truncate',
-                schema=valid_schema,
-                partition_date='20240101',
-                partition_field='field1',
-                source_format='CSV',
-                separator='|',
-                max_bad_records=5,
-                gs_bucket_name='test-gcs-bucket',
-                gs_file_name='test-file.csv'
+        obj = transfer.Client(project="proj", impersonated_credentials="creds")
+        ok, uris = obj.s3_to_bq("aws_session", "bucket", "prefix", "p.d.t")
+
+        self.assertFalse(ok)
+        self.assertEqual(uris, [])
+
+    @patch("to_data_library.data.bq.Client")
+    @patch("to_data_library.data.gs.Client")
+    @patch("to_data_library.data.s3.Client")
+    def test_s3_to_bq_with_files_no_transform(self, mock_s3, mock_gs, mock_bq):
+        mock_s3.return_value.list_files.return_value = [{"name": "file1.csv"}]
+
+        obj = transfer.Client(project="proj", impersonated_credentials="creds")
+
+        ok, uris = obj.s3_to_bq(
+            "aws_session", "bucket", "prefix", "p.d.t", gs_bucket_name="gcs"
+        )
+
+        self.assertTrue(ok)
+        self.assertEqual(uris, ["gs://gcs/file1.csv"])
+        mock_s3.return_value.download.assert_called_once()
+        mock_gs.return_value.upload.assert_called_once()
+        mock_bq.return_value.load_table_from_uris.assert_called_once()
+
+    @patch("to_data_library.data.bq.Client")
+    @patch("to_data_library.data.gs.Client")
+    @patch("to_data_library.data.s3.Client")
+    def test_s3_to_bq_with_transform(self, mock_s3, mock_gs, mock_bq):
+        mock_s3.return_value.list_files.return_value = [{"name": "file1.csv"}]
+
+        obj = transfer.Client(project="proj", impersonated_credentials="creds")
+
+        # Prepare a dummy CSV file for transform_fn to modify
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_path = os.path.join(tmpdir, "file1.csv")
+            pd.DataFrame({"a": [1]}).to_csv(file_path, index=False)
+
+            # fake download: copy our prepared CSV
+            mock_s3.return_value.download.side_effect = \
+                lambda b, n, local_path: os.replace(file_path, local_path)
+
+            def transform(df):
+                df["a"] += 1
+                return df
+
+            ok, uris = obj.s3_to_bq(
+                "aws_session", "bucket", "prefix", "p.d.t",
+                gs_bucket_name="gcs", transform_fn=transform
             )
 
-            # Check that os.remove was called for cleanup
-            mock_remove.assert_called_once_with('/tmp/file.csv')
-            # Check that load_table_from_uris was called (table_id should have $20240101)
-            args, kwargs = mock_bq.return_value.load_table_from_uris.call_args
-            self.assertIn('$20240101', str(args[1].table_id))
-            # Check job_config attributes
-            job_config = kwargs['job_config']
-            self.assertEqual(job_config.source_format, 'CSV')
-            self.assertEqual(job_config.field_delimiter, '|')
-            self.assertEqual(job_config.max_bad_records, 5)
+        self.assertTrue(ok)
+        self.assertEqual(uris, ["gs://gcs/file1.csv"])
+
+    @patch("to_data_library.data.bq.Client")
+    @patch("to_data_library.data.gs.Client")
+    @patch("to_data_library.data.s3.Client")
+    def test_s3_to_bq_partitioning_without_date_raises(self, mock_s3, mock_gs, mock_bq):
+        mock_s3.return_value.list_files.return_value = [{"name": "file1.csv"}]
+
+        obj = transfer.Client(project="proj", impersonated_credentials="creds")
+
+        with self.assertRaises(ValueError) as ctx:
+            obj.s3_to_bq(
+                "aws_session", "bucket", "prefix", "p.d.t",
+                gs_bucket_name="gcs", partition_field="created_at"
+            )
+
+        self.assertIn("partition_field supplied without partition_date", str(ctx.exception))
+
+    @patch("to_data_library.data.bq.Client")
+    @patch("to_data_library.data.gs.Client")
+    @patch("to_data_library.data.s3.Client")
+    def test_s3_to_bq_bq_load_failure(self, mock_s3, mock_gs, mock_bq):
+        mock_s3.return_value.list_files.return_value = [{"name": "file1.csv"}]
+        mock_bq.return_value.load_table_from_uris.side_effect = Exception("bq fail")
+
+        obj = transfer.Client(project="proj", impersonated_credentials="creds")
+
+        ok, uris = obj.s3_to_bq(
+            "aws_session", "bucket", "prefix", "p.d.t", gs_bucket_name="gcs"
+        )
+
+        self.assertFalse(ok)
 
 
 class TestTransferEdgeCases(unittest.TestCase):
@@ -184,59 +237,6 @@ class TestTransferEdgeCases(unittest.TestCase):
                     table='p.d.t',
                     write_preference='truncate',
                     partition_field='field1'
-                )
-            mock_error.assert_called()
-
-    def test_s3_to_bq_invalid_source_format(self):
-        valid_schema = [('field1', 'STRING')]
-        with patch('to_data_library.data.s3.Client'), \
-             patch('to_data_library.data.bq.Client'), \
-             patch('to_data_library.data.gs.Client') as mock_gs_client, \
-             patch('os.path.exists', return_value=True), \
-             patch('os.remove'), \
-             patch.object(transfer.logs.client.logger, 'error') as mock_error:
-            mock_gs_client.return_value.upload.return_value = None
-            with self.assertRaises(ValueError):
-                self.client.s3_to_bq(
-                    aws_session=Mock(),
-                    bucket_name='bucket',
-                    object_name='file.csv',
-                    bq_table='p.d.t',
-                    write_preference='truncate',
-                    schema=valid_schema,
-                    partition_date='20240101',
-                    partition_field='field1',
-                    source_format='NOT_A_FORMAT',
-                    separator='|',
-                    max_bad_records=5,
-                    gs_bucket_name='test-gcs-bucket',  # <-- new required argument
-                    gs_file_name='test-file.csv'       # <-- optional
-                )
-            mock_error.assert_called_with('Invalid SourceFormat entered: NOT_A_FORMAT')
-
-    def test_s3_to_bq_partition_field_without_date(self):
-        valid_schema = [('field1', 'STRING')]
-        with patch('to_data_library.data.s3.Client'), \
-             patch('to_data_library.data.bq.Client'), \
-             patch('to_data_library.data.gs.Client') as mock_gs_client, \
-             patch('os.path.exists', return_value=True), \
-             patch('os.remove'), \
-             patch.object(transfer.logs.client.logger, 'error') as mock_error:
-            mock_gs_client.return_value.upload.return_value = None
-            with self.assertRaises(ValueError):
-                self.client.s3_to_bq(
-                    aws_session=Mock(),
-                    bucket_name='bucket',
-                    object_name='file.csv',
-                    bq_table='p.d.t',
-                    write_preference='truncate',
-                    schema=valid_schema,
-                    partition_field='field1',
-                    source_format='CSV',
-                    separator='|',
-                    max_bad_records=5,
-                    gs_bucket_name='test-gcs-bucket',  # <-- new required argument
-                    gs_file_name='test-file.csv'       # <-- optional
                 )
             mock_error.assert_called()
 
