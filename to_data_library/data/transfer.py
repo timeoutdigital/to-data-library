@@ -370,7 +370,7 @@ class Client:
                          s3_bucket)
 
     def s3_to_gs(self, aws_session, s3_bucket_name,
-                 s3_object_name, gs_bucket_name, gs_file_name=None, wildcard=None):
+                 s3_object_or_prefix_name, gs_bucket_name, gs_file_name=None, wildcard=None, metadata=None):
         """
         Exports file(s) from S3 bucket to Google storage bucket
         Added threading to speed up execution
@@ -378,17 +378,18 @@ class Client:
         Args:
           aws_session: authenticated AWS session.
           s3_bucket_name (str): s3 bucket name
-          s3_object_name (str): s3 object name or prefix to match multiple files to copy
+          s3_object_or_prefix_name (str): s3 object name or prefix to match multiple files to copy
           gs_bucket_name (str): Google storage bucket name (no 'gs://' prefix)
           gs_file_name (str): GS file name
           wildcard (str): regex wildcard (default '.*')
+          metadata (dict): custom metadata to set on the GS object
 
         Example:
             >>> from to_data_library.data import transfer
             >>> client = transfer.Client(project='my-project-id')
             >>> client.s3_to_gs(aws_session,
             >>>                 s3_bucket_name='my-s3-bucket_name',
-            >>>                 s3_object_name='my-s3-file-prefix',
+            >>>                 s3_object_or_prefix_name='my-s3-file-prefix',
             >>>                 gs_bucket_name='my-gs-bucket-name',
             >>>                 gs_file_name='gs_file_name')
         """
@@ -402,7 +403,7 @@ class Client:
         s3_files = self._get_keys_in_s3_bucket(
             aws_session=aws_session,
             bucket_name=s3_bucket_name,
-            prefix_name=s3_object_name,
+            prefix_name=s3_object_or_prefix_name,
             wildcard=wildcard)
 
         logs.client.logger.info(f'Found {str(s3_files)} files in S3')
@@ -424,7 +425,10 @@ class Client:
 
             # Try to upload file from local to GCS.
             try:
-                gs_client.upload(local_file, gs_bucket_name, gs_file_name)
+                bucket = gs_client.bucket(gs_bucket_name)
+                blob = bucket.blob(gs_file_name)
+                blob.metadata = metadata
+                blob.upload_from_filename(local_file)
                 logs.client.logger.info(
                     f'Successfully uploaded {local_file} to {gs_bucket_name}/{gs_file_name}')
             except Exception as e:
@@ -468,7 +472,7 @@ class Client:
         self,
         aws_session,
         bucket_name,
-        object_name,
+        object_or_prefix_name,
         bq_table,
         write_preference,
         auto_detect=True,
@@ -489,7 +493,7 @@ class Client:
         Args:
         aws_session: authenticated AWS session.
         bucket_name (str): s3 bucket name
-        object_name (str): s3 object name to copy
+        object_or_prefix_name (str): s3 object name or prefix to copy
         bq_table (str): The BigQuery table. For example: ``my-project-id.my-dataset.my-table``
         write_preference (str): The option to specify what action to take when you load data from a source file.
             Value can be one of
@@ -516,22 +520,22 @@ class Client:
             >>> client = transfer.Client(project='my-project-id')
             >>> client.s3_to_bq(aws_connection,
             >>>                 bucket_name='my-s3-bucket_name',
-            >>>                 object_name='my-s3-object-name',
+            >>>                 object_or_prefix_name='my-s3-object-name',
             >>>                 bq_table='my-project-id.my-dataset.my-table',
             >>>                 gs_bucket_name='my-gcs-bucket')
         """
 
         # Download S3 file to local
         s3_client = s3.Client(aws_session)
-        local_file = os.path.join('/tmp/', object_name)
-        s3_client.download(bucket_name, object_name, local_file)
+        local_file = os.path.join('/tmp/', object_or_prefix_name)
+        s3_client.download(bucket_name, object_or_prefix_name, local_file)
 
         # Upload local file to GCS
         if not gs_bucket_name:
             logs.client.logger.error("gs_bucket_name must be provided to stage file in GCS before loading to BQ")
             raise ValueError("gs_bucket_name must be provided")
         gs_client = gs.Client(self.project, impersonated_credentials=self.impersonated_credentials)
-        gs_file_name = gs_file_name if gs_file_name else object_name
+        gs_file_name = gs_file_name if gs_file_name else object_or_prefix_name
         gs_client.upload(local_file, gs_bucket_name, gs_file_name)
         gs_uri = f"gs://{gs_bucket_name}/{gs_file_name}"
 
