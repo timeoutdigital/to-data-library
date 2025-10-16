@@ -420,24 +420,26 @@ class Client:
         """
         return '_'.join([source, dimension, partition_date, etl_datetime, file_number])
 
-    def build_gs_metadata(self, s3_bucket_name, s3_object_name, etl_datetime) -> dict:
+    def build_gs_metadata(self, s3_bucket_name, s3_object_name, etl_datetime, repo_name) -> dict:
         """
         Builds the gs metadata based on s3 bucket name, s3 object name and etl datetime
         Args:
             s3_bucket_name (str): s3 bucket name
             s3_object_name (str): s3 object name
             etl_datetime (str): load datetime string to use in the path
+            repo_name (str): The name of the repo that is running the ingestion
         Returns:
             dict: The gs metadata
         Example:
             >>> from to_data_library.data import transfer
             >>> client = transfer.Client(project='my-project-id')
-            >>> metadata = client.build_gs_metadata('my-s3-bucket', 'my-s3-object', '20250102_120000')
+            >>> metadata = client.build_gs_metadata('my-s3-bucket', 'my-s3-object', '20250102_120000', 'da-my-repo')
         """
         return {
             's3_bucket_name': s3_bucket_name,
             's3_object_name': s3_object_name,
-            'etl_datetime': etl_datetime
+            'etl_datetime': etl_datetime,
+            'repo_name': repo_name
         }
 
     def s3_to_gs(
@@ -449,6 +451,7 @@ class Client:
             source_type,
             source,
             dimension,
+            repo_name='Unknown',
             ingestion_type='batch',
             file_number='000',
             wildcard=None,
@@ -471,6 +474,7 @@ class Client:
             source_type (str): The source type of the data being ingested. E.g. 'pos', 'user', 'db', 'tracking', 'ads'
             source (str): The source of the data being ingested. E.g. 'mariadb_datacafe', 'tenzo', 'facebook'
             dimension (str): The dimension of the data being ingested. E.g. 'audience', 'sales'
+            repo_name (str, Optional): The name of the repo that is running the ingestion. Defaults to 'Unknown'.
             ingestion_type (str, Optional): The type of ingestion. Either 'batch' or 'stream'. Defaults to 'batch'.
             file_number (str, Optional): The file number. Defaults to '000'.
             wildcard (str): regex wildcard (default '.*')
@@ -499,7 +503,7 @@ class Client:
         gs_prefix = self.build_gs_prefix(source, ingestion_type, etl_datetime, partition_name)
         gs_file_name = self.build_gs_file_name(source, dimension, partition_name, etl_datetime)
 
-        metadata = self.build_gs_metadata(s3_bucket_name, s3_object_or_prefix_name, etl_datetime)
+        metadata = self.build_gs_metadata(s3_bucket_name, s3_object_or_prefix_name, etl_datetime, repo_name)
         if additional_metadata:
             metadata.update(additional_metadata)
 
