@@ -437,7 +437,6 @@ class Client:
             ingestion_type='batch',
             file_number='000',
             wildcard=None,
-            additional_metadata=None,
             partition_date=None,
             etl_datetime_utc=None
             ) -> Tuple[bool, str]:
@@ -485,8 +484,6 @@ class Client:
         gs_prefix = self.build_gs_prefix(source, ingestion_type, etl_datetime_utc, partition_date)
 
         metadata = self.build_gs_metadata(s3_bucket_name, s3_object_or_prefix_name, etl_datetime_utc, repo_name)
-        if additional_metadata:
-            metadata.update(additional_metadata)
 
         # Retrieve the file(s) from S3 matching to the object
         logs.client.logger.info('Finding files in S3 bucket')
