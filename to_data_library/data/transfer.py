@@ -2,6 +2,7 @@ import datetime
 import os
 import re
 from io import BytesIO
+from pathlib import Path
 from typing import Tuple
 
 import pandas as pd
@@ -122,14 +123,16 @@ class Client:
         Returns:
             (bool, str): Tuple with success status and message
         """
+
         bucket_name = self.build_gs_bucket_name(business_type, source_type)
         prefix = self.build_gs_prefix(source, ingestion_type, etl_datetime_utc, partition_date)
         file_name = self.build_gs_file_name(source, dimension, etl_datetime_utc, partition_date, file_number)
 
         gs_client = gs.Client(self.project, impersonated_credentials=self.impersonated_credentials)
 
-        bucket = gs_client.bucket(bucket_name)
+        bucket = gs_client.get_bucket(bucket_name)
         blobs = bucket.list_blobs(prefix=prefix)
+
         # Get all blobs in the bucket
         for blob in blobs:
             # Get all blobs with this prefix and filename
@@ -356,7 +359,7 @@ class Client:
             >>> client = transfer.Client(project='my-project-id')
             >>> bucket_name = client.build_gs_bucket_name('markets', 'pos')
         """
-        return '-'.join([business_type, source_type])
+        return '-'.join([self.project, business_type, source_type])
 
     def build_gs_prefix(self, source, ingestion_type, etl_datetime_utc, partition_date=None) -> str:
         """
@@ -379,7 +382,15 @@ class Client:
         parts.append(etl_datetime_utc)
         return '/'.join(parts)
 
-    def build_gs_file_name(self, source, dimension, etl_datetime_utc, partition_date=None, file_number=None) -> str:
+    def build_gs_file_name(
+            self,
+            source,
+            dimension,
+            etl_datetime_utc,
+            partition_date=None,
+            file_number=None,
+            file_extension=None
+    ) -> str:
         """
         Builds the gs file name based on source, dimension, partition date, etl datetime and file number
         Args:
@@ -387,6 +398,8 @@ class Client:
             dimension (str): The dimension of the data being ingested. E.g. 'audience', 'sales'
             etl_datetime_utc (str): load datetime string to use in the path
             partition_date (str): The partition date, e.g. '2021-01-01'
+            file_number (str): The file number
+            file_extension (str): The file extension without the leading dot, e.g. 'csv', 'parquet
         Returns:
             str: The gs file name
         Example:
@@ -400,7 +413,10 @@ class Client:
         parts.append(etl_datetime_utc)
         if file_number:
             parts.append(file_number)
-        return '_'.join(parts)
+        file_name = '_'.join(parts)
+        if file_extension:
+            file_name = '.'.join([file_name, file_extension])
+        return file_name
 
     def build_gs_metadata(self, s3_bucket_name, s3_object_name, etl_datetime_utc, repo_name) -> dict:
         """
@@ -450,7 +466,7 @@ class Client:
         Args:
             aws_session: authenticated AWS session.
             s3_bucket_name (str): s3 bucket name
-            s3_object_or_prefix_name (str): s3 object name or prefix to match multiple files to copy
+            s3_object_or_prefix_name (str): s3 object name or prefix to match multiple files to copy,
             business_type (str): The business type of the data being ingested. Generally 'markets' or 'web'.
             source_type (str): The source type of the data being ingested. E.g. 'pos', 'user', 'db', 'tracking', 'ads'
             source (str): The source of the data being ingested. E.g. 'mariadb_datacafe', 'tenzo', 'facebook'
@@ -471,11 +487,19 @@ class Client:
             >>> success, message = client.s3_to_gs(aws_session,
             >>>                                 s3_bucket_name='my-s3-bucket',
             >>>                                 s3_object_or_prefix_name='my-s3-object-or-prefix',
+            >>>                                 project='tog-dev-dt-lnd',
             >>>                                 business_type='markets',
             >>>                                 source_type='pos',
             >>>                                 source='tenzo',
             >>>                                 dimension='sales')
         """
+
+        # Quality Checks
+        # Ensure no underscores in source or dimension
+        for element in [source, dimension]:
+            if '_' in element:
+                return False,  f"Error: {element} must not contain underscores."
+
         if not etl_datetime_utc:
             etl_datetime_utc = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
 
@@ -497,7 +521,7 @@ class Client:
             prefix_name=s3_object_or_prefix_name,
             wildcard=wildcard)
 
-        logs.client.logger.info(f'Found {str(s3_files)} files in S3')
+        logs.client.logger.info(f'Found {len(s3_files)} files in S3')
 
         # Get S3 and GS clients
         s3_client = s3.Client(aws_session)
@@ -509,8 +533,6 @@ class Client:
 
             # Try to download the file to local
             try:
-                gs_file_name = self.build_gs_file_name(source, dimension, etl_datetime_utc, partition_date, file_number)
-                gs_file_path = '/'.join([gs_prefix, gs_file_name])
                 local_file = s3_client.download(s3_bucket_name, s3_file)
                 logs.client.logger.info(f'Successfully downloaded {local_file} to local')
             except Exception as e:
@@ -519,10 +541,23 @@ class Client:
 
             # Try to upload file from local to GCS.
             try:
-                bucket = gs_client.bucket(gs_bucket_name)
-                blob = bucket.blob(gs_file_path)
-                blob.metadata = metadata
-                blob.upload_from_filename(local_file)
+                s3_file_extension = '.'.join(Path(s3_file).suffixes).lstrip('.')
+                gs_file_name = self.build_gs_file_name(
+                    source,
+                    dimension,
+                    etl_datetime_utc,
+                    partition_date,
+                    file_number,
+                    s3_file_extension
+                )
+                gs_file_path = '/'.join([gs_prefix, gs_file_name])
+
+                gs_client.upload(
+                    source_file_name=local_file,
+                    bucket_name=gs_bucket_name,
+                    blob_name=gs_file_path,
+                    metadata=metadata
+                )
                 logs.client.logger.info(
                     f'Successfully uploaded {local_file} to {gs_bucket_name}/{gs_file_path}')
             except Exception as e:
@@ -557,7 +592,6 @@ class Client:
 
         pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix_name)
         for page in pages:
-            print(f"page: {page}")
             for obj in page.get('Contents', []):
                 key = obj['Key']
                 if not key.endswith('/') and re.match(regex, key):

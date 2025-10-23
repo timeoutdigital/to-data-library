@@ -37,7 +37,7 @@ class Client:
         with open(destination_file_name, 'wb') as file_obj:
             self.storage_client.download_blob_to_file(gs_uri, file_obj)
 
-    def upload(self, source_file_name, bucket_name, blob_name=None):
+    def upload(self, source_file_name, bucket_name, blob_name=None, metadata=None):
         """Upload from local to Google Storage.
 
         Args:
@@ -49,6 +49,7 @@ class Client:
             blob_name = source_file_name.split('/')[-1]
 
         blob = self.storage_client.bucket(bucket_name).blob(blob_name)
+        blob.metadata = metadata
         blob.upload_from_filename(source_file_name)
 
     def list_bucket_uris(self, bucket_name, file_type='csv', prefix=None):
