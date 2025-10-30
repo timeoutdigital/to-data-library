@@ -555,7 +555,7 @@ class Client:
         # Ensure no underscores in source or dimension
         for element in [source, dimension]:
             if '_' in element:
-                return False,  f"Error: {element} must not contain underscores."
+                return False, f"Error: {element} must not contain underscores."
 
         if not etl_datetime_utc:
             etl_datetime_utc = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
