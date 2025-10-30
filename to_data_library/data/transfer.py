@@ -533,7 +533,7 @@ class Client:
             wildcard (str): regex wildcard (default '.*')
             data_date (str): effective date of the data set if one exists
               - this determines the 'date' part of the prefix
-            etl_datetime (str): load datetime string to use in the path and file name
+            etl_datetime_utc (str): load datetime string to use in the path and file name
         Returns:
             (bool, str): Tuple with success status and message
 
