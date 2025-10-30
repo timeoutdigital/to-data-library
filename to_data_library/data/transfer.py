@@ -84,7 +84,7 @@ class Client:
             write_preference='append',
             auto_detect=True,
             schema=None,
-            partition_date=None,
+            data_date=None,
             partition_field=None,
             job_config_kwargs=None,
             transform_function=None
@@ -114,8 +114,8 @@ class Client:
             auto_detect (boolean, Optional):  True if the schema should automatically be detected otherwise False.
               Defaults to :data:`True`.
             schema (List[bigquery.SchemaField], Optional): The BigQuery table schema. Can be a partial schema.
-            partition_date (str, Optional): partition_date (str): date of the partition if one exists
-              - this refers to the partition part of the prefix
+            data_date (str, Optional): effective date of the data if one exists
+              - this refers to the 'date' part of the prefix
             partition_field (str, Optional): The field on which the destination table is partitioned. The field must be
               a top-level TIMESTAMP or DATE field. Must be used in conjuction with partitioned_date.
               Here partitioned_date will be used to update or alter the table using the partition
@@ -128,8 +128,8 @@ class Client:
         """
 
         bucket_name = self.build_gs_bucket_name(business_type, source_type)
-        prefix = self.build_gs_prefix(source, ingestion_type, etl_datetime_utc, partition_date)
-        file_name = self.build_gs_file_name(source, dimension, etl_datetime_utc, partition_date, file_number)
+        prefix = self.build_gs_prefix(source, ingestion_type, etl_datetime_utc, data_date)
+        file_name = self.build_gs_file_name(source, dimension, etl_datetime_utc, data_date, file_number)
 
         gs_client = gs.Client(self.project, impersonated_credentials=self.impersonated_credentials)
         bq_client = bq.Client(self.project, impersonated_credentials=self.impersonated_credentials)
@@ -402,14 +402,14 @@ class Client:
         """
         return '-'.join([self.project, business_type, source_type])
 
-    def build_gs_prefix(self, source, ingestion_type, etl_datetime_utc, partition_date=None) -> str:
+    def build_gs_prefix(self, source, ingestion_type, etl_datetime_utc, data_date=None) -> str:
         """
-        Builds the gs prefix based on source, ingestion type, etl datetime and partition date
+        Builds the gs prefix based on source, ingestion type, etl datetime and data date
         Args:
             source (str): The source of the data being ingested. E.g. 'mariadb_datacafe', 'tenzo', 'facebook'
             ingestion_type (str): The type of ingestion. Either 'batch' or 'stream'.
             etl_datetime_utc (str): load datetime string to use in the path
-            partition_date (str): date of the partition if one exists
+            data_date (str): effective date of the data if one exists
         Returns:
             str: The gs prefix
         Example:
@@ -418,8 +418,8 @@ class Client:
             >>> prefix = client.build_gs_prefix('tenzo', 'batch', '20250102_120000', '2021-01-01')
         """
         parts = [source, ingestion_type]
-        if partition_date:
-            parts.append(partition_date)
+        if data_date:
+            parts.append(data_date)
         parts.append(etl_datetime_utc)
         return '/'.join(parts)
 
@@ -428,17 +428,17 @@ class Client:
             source,
             dimension,
             etl_datetime_utc,
-            partition_date=None,
+            data_date=None,
             file_number=None,
             file_extension=None
     ) -> str:
         """
-        Builds the gs file name based on source, dimension, partition date, etl datetime and file number
+        Builds the gs file name based on source, dimension, data date, etl datetime and file number
         Args:
             source (str): The source of the data being ingested. E.g. 'mariadb_datacafe', 'tenzo', 'facebook'
             dimension (str): The dimension of the data being ingested. E.g. 'audience', 'sales'
             etl_datetime_utc (str): load datetime string to use in the path
-            partition_date (str): The partition date, e.g. '2021-01-01'
+            data_date (str): The effective data date, e.g. '2021-01-01'
             file_number (str): The file number
             file_extension (str): The file extension without the leading dot, e.g. 'csv', 'parquet
         Returns:
@@ -449,8 +449,8 @@ class Client:
             >>> file_name = client.build_gs_file_name('tenzo', 'sales', '2021-01-01', '20250102_120000', '000')
         """
         parts = [source, dimension]
-        if partition_date:
-            parts.append(partition_date)
+        if data_date:
+            parts.append(data_date)
         parts.append(etl_datetime_utc)
         if file_number:
             parts.append(file_number)
@@ -494,7 +494,7 @@ class Client:
             ingestion_type='batch',
             file_number='000',
             wildcard=None,
-            partition_date=None,
+            data_date=None,
             etl_datetime_utc=None
             ) -> Tuple[bool, str]:
         """
@@ -517,7 +517,8 @@ class Client:
             file_number (str, Optional): The file number. Defaults to '000'.
             wildcard (str): regex wildcard (default '.*')
             additional_metadata (dict): custom metadata to set on the GS object
-            partition_date (str): date of the partition if one exists - this determines the partition part of the prefix
+            data_date (str): effective date of the data set if one exists
+              - this determines the 'date' part of the prefix
             etl_datetime (str): load datetime string to use in the path and file name
         Returns:
             (bool, str): Tuple with success status and message
@@ -546,7 +547,7 @@ class Client:
 
         # Build the GS bucket name, prefix and metadata
         gs_bucket_name = self.build_gs_bucket_name(business_type, source_type)
-        gs_prefix = self.build_gs_prefix(source, ingestion_type, etl_datetime_utc, partition_date)
+        gs_prefix = self.build_gs_prefix(source, ingestion_type, etl_datetime_utc, data_date)
 
         metadata = self.build_gs_metadata(s3_bucket_name, s3_object_or_prefix_name, etl_datetime_utc, repo_name)
 
@@ -587,7 +588,7 @@ class Client:
                     source,
                     dimension,
                     etl_datetime_utc,
-                    partition_date,
+                    data_date,
                     file_number,
                     s3_file_extension
                 )
