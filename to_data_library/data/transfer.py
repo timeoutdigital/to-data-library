@@ -455,7 +455,7 @@ class Client:
             etl_datetime_utc (str): load datetime string to use in the path
             data_date (str): The effective data date, e.g. '2021-01-01'
             file_number (str): The file number
-            file_extension (str): The file extension without the leading dot, e.g. 'csv', 'parquet
+            file_extension (str): The file extension without the leading dot, e.g. 'csv', 'parquet'
         Returns:
             str: The gs file name
         Example:
