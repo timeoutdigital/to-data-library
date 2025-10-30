@@ -626,9 +626,9 @@ class Client:
         Returns:
             list: List of keys in that bucket that match the desired prefix
         """
-        s3_client_boto = aws_session.client('s3')
+        s3_client_boto = aws_session.client("s3")
         s3_files = []
-        paginator = s3_client_boto.get_paginator('list_objects_v2')
+        paginator = s3_client_boto.get_paginator("list_objects_v2")
 
         regex = re.compile(wildcard)
 
