@@ -269,7 +269,6 @@ class Client:
 
         logs.client.logger.info(f'Loading BigQuery table {table_id} from DataFrame')
         job = self.bigquery_client.load_table_from_dataframe(data_df, table_ref, job_config=job_config)
-
         job.result()
 
     def run_query(self, query=None, query_file_name=None, params=(), destination=None, write_preference='empty',

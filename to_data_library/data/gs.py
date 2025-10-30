@@ -52,6 +52,19 @@ class Client:
         blob.metadata = metadata
         blob.upload_from_filename(source_file_name)
 
+    def get_blobs(self, bucket_name, prefix=None):
+        """Get the blobs in a bucket
+
+        Args:
+            bucket_name (str): the bucket name (no 'gs://' prefix)
+            prefix (str): the folder path to the files
+
+        Returns:
+            list: The list of the contents
+        """
+        blobs = self.storage_client.list_blobs(bucket_name, prefix=prefix)
+        return blobs
+
     def list_bucket_uris(self, bucket_name, file_type='csv', prefix=None):
         """Lists the files in a bucket
 
@@ -63,7 +76,7 @@ class Client:
         Returns:
             list: The list of the contents
         """
-        blobs = self.storage_client.list_blobs(bucket_name, prefix=prefix)
+        blobs = self.get_blobs(bucket_name, prefix=prefix)
         gs_uris = [f"gs://{bucket_name}/{blob.name}" for blob in blobs if blob.name.endswith(file_type)]
         return gs_uris
 

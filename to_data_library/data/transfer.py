@@ -86,7 +86,8 @@ class Client:
             schema=None,
             partition_date=None,
             partition_field=None,
-            job_config_kwargs=None
+            job_config_kwargs=None,
+            transform_function=None
             ) -> Tuple[bool, str]:
         """
         - Loads file(s) from Google storage bucket to BigQuery table
@@ -113,12 +114,14 @@ class Client:
             auto_detect (boolean, Optional):  True if the schema should automatically be detected otherwise False.
               Defaults to :data:`True`.
             schema (List[bigquery.SchemaField], Optional): The BigQuery table schema. Can be a partial schema.
-            partition_date (str, Optional): The ingestion date for partitioned destination table. For example:
-              ``20210101``. The partition field name will be __PARTITIONTIME
+            partition_date (str, Optional): partition_date (str): date of the partition if one exists
+              - this refers to the partition part of the prefix
             partition_field (str, Optional): The field on which the destination table is partitioned. The field must be
               a top-level TIMESTAMP or DATE field. Must be used in conjuction with partitioned_date.
               Here partitioned_date will be used to update or alter the table using the partition
             job_config_kwargs (dict, Optional): Any additional properties to set for the job config.
+            transform_function (Callable, Optional): A function that takes a pandas DataFrame as input and
+              returns a transformed DataFrame.
 
         Returns:
             (bool, str): Tuple with success status and message
@@ -129,37 +132,75 @@ class Client:
         file_name = self.build_gs_file_name(source, dimension, etl_datetime_utc, partition_date, file_number)
 
         gs_client = gs.Client(self.project, impersonated_credentials=self.impersonated_credentials)
+        bq_client = bq.Client(self.project, impersonated_credentials=self.impersonated_credentials)
 
-        bucket = gs_client.get_bucket(bucket_name)
-        blobs = bucket.list_blobs(prefix=prefix)
+        # Get all blobs in the bucket matching the file name
+        blobs = list(gs_client.get_blobs(bucket_name, prefix=prefix))
+        blobs = [blob for blob in blobs if blob.name.startswith(f"{prefix}/{file_name}")]
 
-        # Get all blobs in the bucket
+        logs.client.logger.info(f"Found {len(blobs)} files in gs://{bucket_name}/{prefix}/ matching {file_name}")
+
         for blob in blobs:
-            # Get all blobs with this prefix and filename
-            if blob.name.startswith(f"{prefix}/{file_name}"):
-                try:
-                    # Load as dataframe
-                    df = self.load_gcs_file_as_dataframe(blob)
-                except Exception as e:
-                    self.logger.error(f"Error loading GCS file {blob.name} as dataframe: {e}")
-                    return False, str(e)
-                # Add metadata: etl_datetime_utc column
-                df['etl_datetime_utc'] = etl_datetime_utc
+            logs.client.logger.info(f"Loading file {blob.name}...")
+            try:
+                # Load as dataframe
+                df = self.load_gcs_file_as_dataframe(blob)
+            except Exception as e:
+                logs.client.logger.error(f"Error loading GCS file {blob.name} as dataframe: {e}")
+                return False, str(e)
+            # Add metadata: etl_datetime_utc column
+            df['etl_datetime_utc'] = etl_datetime_utc
 
+            if transform_function:
                 try:
-                    bq.load_table_from_dataframe(
-                        df,
+                    df = transform_function(df)
+                except Exception as e:
+                    logs.client.logger.error(f"Error applying transform function to dataframe from {blob.name}: {e}")
+                    return False, str(e)
+
+            dfs = []
+            if partition_field:
+
+                # Ensure partition field is in the dataframe
+                if partition_field not in df.columns:
+                    logs.client.logger.error(
+                        f"Partition field {partition_field} not found in dataframe columns")
+                    return False, f"Partition field {partition_field} not found in dataframe columns"
+
+                # Split df into separate dataframes for each partition date
+                partition_dates = df[partition_field].unique()
+                logs.client.logger.info(f"Found {len(partition_dates)} partition dates.")
+                logs.client.logger.info("Splitting dataframe into separate partitions for loading.")
+                for date in partition_dates:
+                    partition_df = df[df[partition_field] == date]
+                    try:
+                        part_date = date.strftime('%Y%m%d')
+                    except Exception as e:
+                        logs.client.logger.error(f"Error formatting partition date {date}: {e}")
+                        return (
+                            False,
+                            f"Error formatting partition date {date}."
+                            f" Ensure partition field {partition_field} contains all valid date or datetime values."
+                        )
+                    dfs.append({'df': partition_df, 'partition_date': part_date})
+            else:
+                dfs.append({'df': df, 'partition_date': None})
+
+            try:
+                for df in dfs:
+                    bq_client.load_table_from_dataframe(
+                        df['df'],
                         table,
                         write_preference,
                         auto_detect,
                         schema,
-                        partition_date,
+                        df['partition_date'],
                         partition_field,
                         job_config_kwargs
                         )
-                except Exception as e:
-                    self.logger.error(f"Error loading dataframe to BQ table {table}: {e}")
-                    return False, str(e)
+            except Exception as e:
+                logs.client.logger.error(f"Error loading dataframe to BQ table {table}: {e}")
+                return False, str(e)
 
         return True, f'Successfully loaded files from gs://{bucket_name}/{prefix}/{file_name} to {table}'
 
@@ -476,7 +517,7 @@ class Client:
             file_number (str, Optional): The file number. Defaults to '000'.
             wildcard (str): regex wildcard (default '.*')
             additional_metadata (dict): custom metadata to set on the GS object
-            partition_date (str): date of the partition if one exists
+            partition_date (str): date of the partition if one exists - this determines the partition part of the prefix
             etl_datetime (str): load datetime string to use in the path and file name
         Returns:
             (bool, str): Tuple with success status and message
