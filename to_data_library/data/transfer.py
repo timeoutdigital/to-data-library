@@ -3,7 +3,7 @@ import os
 import re
 from io import BytesIO
 from pathlib import Path
-from typing import Tuple
+from typing import List, Tuple
 
 import pandas as pd
 from google.api_core import exceptions
@@ -83,6 +83,8 @@ class Client:
             file_number=None,
             write_preference='append',
             auto_detect=True,
+            max_bad_records: int = 0,
+            schema_update_options: List[bigquery.SchemaUpdateOption] = None,
             schema=None,
             data_date=None,
             partition_field=None,
@@ -113,6 +115,12 @@ class Client:
                                                 new data.
             auto_detect (boolean, Optional):  True if the schema should automatically be detected otherwise False.
               Defaults to :data:`True`.
+            max_bad_records (int, Optional): The maximum number of rows with errors allowed when loading data.
+            schema_update_options (List[bigquery.SchemaUpdateOption], Optional): Specifies the schema update options
+              to use when loading data into a table. The schema_update_options property
+              allows the schema of the destination table to be updated as a side effect of loading
+              new data. The schema_update_options can only be used when write_preference is set to 'append' or
+              'truncate'.
             schema (List[bigquery.SchemaField], Optional): The BigQuery table schema. Can be a partial schema.
             data_date (str, Optional): effective date of the data if one exists
               - this refers to the 'date' part of the prefix
@@ -130,6 +138,13 @@ class Client:
         bucket_name = self.build_gs_bucket_name(business_type, source_type)
         prefix = self.build_gs_prefix(source, ingestion_type, etl_datetime_utc, data_date)
         file_name = self.build_gs_file_name(source, dimension, etl_datetime_utc, data_date, file_number)
+
+        if job_config_kwargs is None:
+            job_config_kwargs = {}
+        if max_bad_records > 0:
+            job_config_kwargs['max_bad_records'] = max_bad_records
+        if schema_update_options:
+            job_config_kwargs['schema_update_options'] = schema_update_options
 
         gs_client = gs.Client(self.project, impersonated_credentials=self.impersonated_credentials)
         bq_client = bq.Client(self.project, impersonated_credentials=self.impersonated_credentials)
@@ -626,9 +641,9 @@ class Client:
         Returns:
             list: List of keys in that bucket that match the desired prefix
         """
-        s3_client_boto = aws_session.client("s3")
+        s3_client_boto = aws_session.client('s3')
         s3_files = []
-        paginator = s3_client_boto.get_paginator("list_objects_v2")
+        paginator = s3_client_boto.get_paginator('list_objects_v2')
 
         regex = re.compile(wildcard)
 
