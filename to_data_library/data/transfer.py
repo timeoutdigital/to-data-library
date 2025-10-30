@@ -531,7 +531,6 @@ class Client:
             ingestion_type (str, Optional): The type of ingestion. Either 'batch' or 'stream'. Defaults to 'batch'.
             file_number (str, Optional): The file number. Defaults to '000'.
             wildcard (str): regex wildcard (default '.*')
-            additional_metadata (dict): custom metadata to set on the GS object
             data_date (str): effective date of the data set if one exists
               - this determines the 'date' part of the prefix
             etl_datetime (str): load datetime string to use in the path and file name
