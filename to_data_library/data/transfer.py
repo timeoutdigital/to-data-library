@@ -3,7 +3,7 @@ import os
 import re
 from io import BytesIO
 from pathlib import Path
-from typing import List, Tuple
+from typing import Tuple
 
 import pandas as pd
 from google.api_core import exceptions
@@ -83,8 +83,8 @@ class Client:
             file_number=None,
             write_preference='append',
             auto_detect=True,
-            max_bad_records: int = 0,
-            schema_update_options: List[bigquery.SchemaUpdateOption] = None,
+            max_bad_records=0,
+            schema_update_options=None,
             schema=None,
             data_date=None,
             partition_field=None,
