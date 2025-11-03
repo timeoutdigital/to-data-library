@@ -184,8 +184,12 @@ class Client:
 
                 # Split df into separate dataframes for each partition date
                 partition_dates = df[partition_field].unique()
-                logs.client.logger.info(f"Found {len(partition_dates)} partition dates.")
-                logs.client.logger.info("Splitting dataframe into separate partitions for loading.")
+                multiple_partitions = len(partition_dates) > 1
+                logs.client.logger.info(
+                    f"Found {len(partition_dates)} partition{'s' if multiple_partitions else ''} in the data."
+                    )
+                if multiple_partitions:
+                    logs.client.logger.info("Splitting dataframe into separate partitions for loading.")
                 for date in partition_dates:
                     partition_df = df[df[partition_field] == date]
                     try:
