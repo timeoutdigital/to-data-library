@@ -1,8 +1,9 @@
+import datetime
 import os
 import re
-import sys
-import tempfile
-from typing import List
+from io import BytesIO
+from pathlib import Path
+from typing import Tuple
 
 import pandas as pd
 from google.api_core import exceptions
@@ -70,128 +71,157 @@ class Client:
         blobs = storage_client.list_blobs(bucket_name)
         return ['gs://{}/{}'.format(bucket_name, blob.name) for blob in blobs]
 
-    def gs_to_bq(self, gs_uris, table,
-                 write_preference,
-                 auto_detect: bool = True,
-                 skip_leading_rows: bool = True,
-                 separator: str = None,
-                 source_format: str = 'CSV',
-                 schema: List[bigquery.SchemaField] = None,
-                 partition_date: str = None,
-                 partition_field: str = None,
-                 max_bad_records: int = 0,
-                 schema_update_options: List[bigquery.SchemaUpdateOption] = None
-                 ):
-        """Load file from Google Storage into the BigQuery table
+    def gs_to_bq(
+            self,
+            business_type,
+            source_type,
+            source,
+            ingestion_type,
+            etl_datetime_utc,
+            dimension,
+            table,
+            file_number=None,
+            write_preference='append',
+            auto_detect=True,
+            max_bad_records=0,
+            schema_update_options=None,
+            schema=None,
+            data_date=None,
+            partition_field=None,
+            job_config_kwargs=None,
+            transform_function=None
+            ) -> Tuple[bool, str]:
+        """
+        - Loads file(s) from Google storage bucket to BigQuery table
+        - Uses the standard naming conventions for bucket, prefix and file name
+          as per documentation here:
+          https://timeoutgroup.atlassian.net/wiki/spaces/TD/pages/3824189448/ELT+Process
+        - Adds etl_datetime_utc column to the dataframe before loading to BigQuery
+        - If multiple files are found, they are all loaded into BigQuery
 
         Args:
-            gs_uris (Union[str, Sequence[str]]):  The Google Storage uri(s) for the file(s). For example: A single file:
-              ``gs://my_bucket_name/my_filename``, multiple files: ``[gs://my_bucket_name/my_first_file,
-              gs://my_bucket_name/my_second_file]``.
+            business_type (str): The business type of the data being ingested. Generally 'markets' or 'web'.
+            source_type (str): The source type of the data being ingested. E.g. 'pos', 'user', 'db', 'tracking', 'ads'
+            source (str): The source of the data being ingested. E.g. 'mariadb_datacafe', 'tenzo', 'facebook'
+            ingestion_type (str): The type of ingestion. Either 'batch' or 'stream'.
+            etl_datetime_utc (str): load datetime string to use in the path
+            dimension (str): The dimension of the data being ingested. E.g. 'audience', 'sales'
             table (str): The BigQuery table name. For example: ``project.dataset.table``.
             write_preference (str): The option to specify what action to take when you load data from a source file.
-            Value can be on of
+              Value can be one of
                                               ``'empty'``: Writes the data only if the table is empty.
                                               ``'append'``: Appends the data to the end of the table.
                                               ``'truncate'``: Erases all existing data in a table before writing the
                                                 new data.
             auto_detect (boolean, Optional):  True if the schema should automatically be detected otherwise False.
-            Defaults to :data:`True`.
-            skip_leading_rows (boolean, Optional):  True to skip the first row of the file otherwise False. Defaults to
-              :data:`True`.
-            separator (str, Optional): The separator. Defaults to :data:`,`
-            source_format (str, Optional): The file format (CSV, JSON, PARQUET or AVRO)
-            compressed (boolean, Optional): True if the file is compressed, defaults ot False
-            schema (tuple): The BigQuery table schema. For example: ``(('first_field','STRING'),('second_field',
-              'STRING'))``
-            partition_date (str, Optional): The ingestion date for partitioned destination table. For example:
-              ``20210101``. The partition field name will be __PARTITIONTIME
+              Defaults to :data:`True`.
+            max_bad_records (int, Optional): The maximum number of rows with errors allowed when loading data.
+            schema_update_options (List[bigquery.SchemaUpdateOption], Optional): Specifies the schema update options
+              to use when loading data into a table. The schema_update_options property
+              allows the schema of the destination table to be updated as a side effect of loading
+              new data. The schema_update_options can only be used when write_preference is set to 'append' or
+              'truncate'.
+            schema (List[bigquery.SchemaField], Optional): The BigQuery table schema. Can be a partial schema.
+            data_date (str, Optional): effective date of the data if one exists
+              - this refers to the 'date' part of the prefix
             partition_field (str, Optional): The field on which the destination table is partitioned. The field must be
               a top-level TIMESTAMP or DATE field. Must be used in conjuction with partitioned_date.
               Here partitioned_date will be used to update or alter the table using the partition
-            schema (List[bigquery.SchemaField], Optional): A List of SchemaFields.
-            max_bad_records (int, Optional): The maximum number of rows with errors. Defaults to :data:0
-            schema_update_options (List[bigquery.SchemaUpdateOption], Optional): A List of SchemaUpdateOptions.
-                How to update the schema when performing load/extract operations.
+            job_config_kwargs (dict, Optional): Any additional properties to set for the job config.
+            transform_function (Callable, Optional): A function that takes a pandas DataFrame as input and
+              returns a transformed DataFrame.
 
-        Examples:
-            >>> from to_data_library.data import transfer
-            >>> client = transfer.Client(project='my-project-id')
-            >>> client.gs_to_bq(gs_uris='gs://my-bucket-name/my-filename',table='my-project-id.my_dataset.my_table')
+        Returns:
+            (bool, str): Tuple with success status and message
         """
-        project, dataset_id, table_id = table.split('.')
-        dataset_ref = bigquery.DatasetReference(
-            project=project, dataset_id=dataset_id)
 
-        job_config = bigquery.LoadJobConfig(
-            autodetect=auto_detect,
-            write_disposition=get_bq_write_disposition(write_preference),
-            allow_quoted_newlines=True,
-            max_bad_records=max_bad_records,
-            schema_update_options=schema_update_options
-        )
+        bucket_name = self.build_gs_bucket_name(business_type, source_type)
+        prefix = self.build_gs_prefix(source, ingestion_type, etl_datetime_utc, data_date)
+        file_name = self.build_gs_file_name(source, dimension, etl_datetime_utc, data_date, file_number)
 
-        if skip_leading_rows:
-            job_config.skip_leading_rows = 1
+        if job_config_kwargs is None:
+            job_config_kwargs = {}
+        if max_bad_records > 0:
+            job_config_kwargs['max_bad_records'] = max_bad_records
+        if schema_update_options:
+            job_config_kwargs['schema_update_options'] = schema_update_options
 
-        if (partition_date and not partition_field):
-            job_config.time_partitioning = bigquery.TimePartitioning(
-                type_=bigquery.TimePartitioningType.DAY)
-            table_id += '${}'.format(partition_date)
-        elif (partition_date and partition_field):
-            job_config.time_partitioning = bigquery.TimePartitioning(
-                type_=bigquery.TimePartitioningType.DAY, field=partition_field)
-            table_id += '${}'.format(partition_date)
-        elif (partition_field and not partition_date and write_preference == 'truncate'):
-            logs.client.logger.error(
-                "Error if partition_field is supplied partitioned_date must also be supplied")
-            sys.exit(1)
+        gs_client = gs.Client(self.project, impersonated_credentials=self.impersonated_credentials)
+        bq_client = bq.Client(self.project, impersonated_credentials=self.impersonated_credentials)
 
-        table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
+        # Get all blobs in the bucket matching the file name
+        blobs = list(gs_client.get_blobs(bucket_name, prefix=prefix))
+        blobs = [blob for blob in blobs if blob.name.startswith(f"{prefix}/{file_name}")]
 
-        if separator:
-            job_config.field_delimiter = separator
+        logs.client.logger.info(f"Found {len(blobs)} files in gs://{bucket_name}/{prefix}/ matching {file_name}")
 
-        if schema:
-            if isinstance(schema[0], bigquery.SchemaField):
-                job_config.schema = schema
+        for blob in blobs:
+            logs.client.logger.info(f"Loading file {blob.name}...")
+            try:
+                # Load as dataframe
+                df = self.load_gcs_file_as_dataframe(blob)
+            except Exception as e:
+                logs.client.logger.error(f"Error loading GCS file {blob.name} as dataframe: {e}")
+                return False, str(e)
+            # Add metadata: etl_datetime_utc column
+            df['etl_datetime_utc'] = etl_datetime_utc
+
+            if transform_function:
+                try:
+                    df = transform_function(df)
+                except Exception as e:
+                    logs.client.logger.error(f"Error applying transform function to dataframe from {blob.name}: {e}")
+                    return False, str(e)
+
+            dfs = []
+            if partition_field:
+
+                # Ensure partition field is in the dataframe
+                if partition_field not in df.columns:
+                    logs.client.logger.error(
+                        f"Partition field {partition_field} not found in dataframe columns")
+                    return False, f"Partition field {partition_field} not found in dataframe columns"
+
+                # Split df into separate dataframes for each partition date
+                partition_dates = df[partition_field].unique()
+                multiple_partitions = len(partition_dates) > 1
+                logs.client.logger.info(
+                    f"Found {len(partition_dates)} partition{'s' if multiple_partitions else ''} in the data."
+                    )
+                if multiple_partitions:
+                    logs.client.logger.info("Splitting dataframe into separate partitions for loading.")
+                for date in partition_dates:
+                    partition_df = df[df[partition_field] == date]
+                    try:
+                        part_date = date.strftime('%Y%m%d')
+                    except Exception as e:
+                        logs.client.logger.error(f"Error formatting partition date {date}: {e}")
+                        return (
+                            False,
+                            f"Error formatting partition date {date}."
+                            f" Ensure partition field {partition_field} contains all valid date or datetime values."
+                        )
+                    dfs.append({'df': partition_df, 'partition_date': part_date})
             else:
-                job_config.schema = [bigquery.SchemaField(field[0], field[1]) for field in schema]
+                dfs.append({'df': df, 'partition_date': None})
 
-        # Define the source format
-        if source_format == 'CSV':
-            job_config.source_format = bigquery.SourceFormat.CSV
-        elif source_format == 'JSON':
-            job_config.source_format = bigquery.SourceFormat.NEWLINE_DELIMITED_JSON
-        elif source_format == 'AVRO':
-            job_config.source_format = bigquery.SourceFormat.AVRO
-        elif source_format == 'PARQUET':
-            job_config.source_format = bigquery.SourceFormat.PARQUET
-        else:
-            logs.client.logger.error(
-                f"Invalid SourceFormat entered: {source_format}")
-            sys.exit(1)
+            try:
+                for df in dfs:
+                    bq_client.load_table_from_dataframe(
+                        df['df'],
+                        table,
+                        write_preference,
+                        auto_detect,
+                        schema,
+                        df['partition_date'],
+                        partition_field,
+                        job_config_kwargs
+                        )
+            except Exception as e:
+                logs.client.logger.error(f"Error loading dataframe to BQ table {table}: {e}")
+                return False, str(e)
 
-        bq_client = bq.Client(project,
-                              impersonated_credentials=self.impersonated_credentials)
-        try:
-            bq_client.create_dataset(dataset_id)
-        except exceptions.Conflict:
-            logs.client.logger.info(
-                'Dataset {} Already exists'.format(dataset_id))
-
-        logs.client.logger.info(
-            'Loading BigQuery table {} from {}'.format(table, gs_uris))
-
-        try:
-            # Start the load job
-            return bq_client.load_table_from_uris(
-                gs_uris, table_ref, job_config=job_config
-            )
-
-        except Exception as e:
-            logs.client.logger.error(f"Unexpected error occurred: {e}")
-            return False, str(e)
+        return True, f'Successfully loaded files from gs://{bucket_name}/{prefix}/{file_name} to {table}'
 
     def gs_parquet_to_bq(self, gs_uris, table, write_preference, auto_detect=True,
                          schema=(), partition_date=None, max_bad_records=0):
@@ -376,29 +406,168 @@ class Client:
         s3_client.upload(local_file,
                          s3_bucket)
 
-    def s3_to_gs(self, aws_session, s3_bucket_name,
-                 s3_object_name, gs_bucket_name, gs_file_name=None, wildcard=None):
+    def build_gs_bucket_name(self, business_type, source_type) -> str:
         """
-        Exports file(s) from S3 bucket to Google storage bucket
-        Added threading to speed up execution
+        Builds the gs bucket name based on business type and source type
+        Args:
+            business_type (str): The business type of the data being ingested. Generally 'markets' or 'web'.
+            source_type (str): The source type of the data being ingested. E.g. 'pos', 'user', 'db', 'tracking', 'ads'
+        Returns:
+            str: The gs bucket name
+        Example:
+            >>> from to_data_library.data import transfer
+            >>> client = transfer.Client(project='my-project-id')
+            >>> bucket_name = client.build_gs_bucket_name('markets', 'pos')
+        """
+        return '-'.join([self.project, business_type, source_type])
+
+    def build_gs_prefix(self, source, ingestion_type, etl_datetime_utc, data_date=None) -> str:
+        """
+        Builds the gs prefix based on source, ingestion type, etl datetime and data date
+        Args:
+            source (str): The source of the data being ingested. E.g. 'mariadb_datacafe', 'tenzo', 'facebook'
+            ingestion_type (str): The type of ingestion. Either 'batch' or 'stream'.
+            etl_datetime_utc (str): load datetime string to use in the path
+            data_date (str): effective date of the data if one exists
+        Returns:
+            str: The gs prefix
+        Example:
+            >>> from to_data_library.data import transfer
+            >>> client = transfer.Client(project='my-project-id')
+            >>> prefix = client.build_gs_prefix('tenzo', 'batch', '20250102_120000', '2021-01-01')
+        """
+        parts = [source, ingestion_type]
+        if data_date:
+            parts.append(data_date)
+        parts.append(etl_datetime_utc)
+        return '/'.join(parts)
+
+    def build_gs_file_name(
+            self,
+            source,
+            dimension,
+            etl_datetime_utc,
+            data_date=None,
+            file_number=None,
+            file_extension=None
+    ) -> str:
+        """
+        Builds the gs file name based on source, dimension, data date, etl datetime and file number
+        Args:
+            source (str): The source of the data being ingested. E.g. 'mariadb_datacafe', 'tenzo', 'facebook'
+            dimension (str): The dimension of the data being ingested. E.g. 'audience', 'sales'
+            etl_datetime_utc (str): load datetime string to use in the path
+            data_date (str): The effective data date, e.g. '2021-01-01'
+            file_number (str): The file number
+            file_extension (str): The file extension without the leading dot, e.g. 'csv', 'parquet'
+        Returns:
+            str: The gs file name
+        Example:
+            >>> from to_data_library.data import transfer
+            >>> client = transfer.Client(project='my-project-id')
+            >>> file_name = client.build_gs_file_name('tenzo', 'sales', '2021-01-01', '20250102_120000', '000')
+        """
+        parts = [source, dimension]
+        if data_date:
+            parts.append(data_date)
+        parts.append(etl_datetime_utc)
+        if file_number:
+            parts.append(file_number)
+        file_name = '_'.join(parts)
+        if file_extension:
+            file_name = '.'.join([file_name, file_extension])
+        return file_name
+
+    def build_gs_metadata(self, s3_bucket_name, s3_object_name, etl_datetime_utc, repo_name) -> dict:
+        """
+        Builds the gs metadata based on s3 bucket name, s3 object name and etl datetime
+        Args:
+            s3_bucket_name (str): s3 bucket name
+            s3_object_name (str): s3 object name
+            etl_datetime_utc (str): load datetime string to use in the path
+            repo_name (str): The name of the repo that is running the ingestion
+        Returns:
+            dict: The gs metadata
+        Example:
+            >>> from to_data_library.data import transfer
+            >>> client = transfer.Client(project='my-project-id')
+            >>> metadata = client.build_gs_metadata('my-s3-bucket', 'my-s3-object', '20250102_120000', 'da-my-repo')
+        """
+        return {
+            's3_bucket_name': s3_bucket_name,
+            's3_object_name': s3_object_name,
+            'etl_datetime_utc': etl_datetime_utc,
+            'repo_name': repo_name
+        }
+
+    def s3_to_gs(
+            self,
+            aws_session,
+            s3_bucket_name,
+            s3_object_or_prefix_name,
+            business_type,
+            source_type,
+            source,
+            dimension,
+            repo_name='Unknown',
+            ingestion_type='batch',
+            file_number='000',
+            wildcard=None,
+            data_date=None,
+            etl_datetime_utc=None
+            ) -> Tuple[bool, str]:
+        """
+        - Exports file(s) from S3 bucket to Google storage bucket
+        - Enforces the use of the standard naming conventions for bucket, prefix, file name and metadata
+          as per documentation here:
+          https://timeoutgroup.atlassian.net/wiki/spaces/TD/pages/3824189448/ELT+Process
+        - Added threading to speed up execution
 
         Args:
-          aws_session: authenticated AWS session.
-          s3_bucket_name (str): s3 bucket name
-          s3_object_name (str): s3 object name or prefix to match multiple files to copy
-          gs_bucket_name (str): Google storage bucket name (no 'gs://' prefix)
-          gs_file_name (str): GS file name
-          wildcard (str): regex wildcard (default '.*')
+            aws_session: authenticated AWS session.
+            s3_bucket_name (str): s3 bucket name
+            s3_object_or_prefix_name (str): s3 object name or prefix to match multiple files to copy,
+            business_type (str): The business type of the data being ingested. Generally 'markets' or 'web'.
+            source_type (str): The source type of the data being ingested. E.g. 'pos', 'user', 'db', 'tracking', 'ads'
+            source (str): The source of the data being ingested. E.g. 'mariadb_datacafe', 'tenzo', 'facebook'
+            dimension (str): The dimension of the data being ingested. E.g. 'audience', 'sales'
+            repo_name (str, Optional): The name of the repo that is running the ingestion. Defaults to 'Unknown'.
+            ingestion_type (str, Optional): The type of ingestion. Either 'batch' or 'stream'. Defaults to 'batch'.
+            file_number (str, Optional): The file number. Defaults to '000'.
+            wildcard (str): regex wildcard (default '.*')
+            data_date (str): effective date of the data set if one exists
+              - this determines the 'date' part of the prefix
+            etl_datetime_utc (str): load datetime string to use in the path and file name
+        Returns:
+            (bool, str): Tuple with success status and message
 
         Example:
             >>> from to_data_library.data import transfer
             >>> client = transfer.Client(project='my-project-id')
-            >>> client.s3_to_gs(aws_session,
-            >>>                 s3_bucket_name='my-s3-bucket_name',
-            >>>                 s3_object_name='my-s3-file-prefix',
-            >>>                 gs_bucket_name='my-gs-bucket-name',
-            >>>                 gs_file_name='gs_file_name')
+            >>> success, message = client.s3_to_gs(aws_session,
+            >>>                                 s3_bucket_name='my-s3-bucket',
+            >>>                                 s3_object_or_prefix_name='my-s3-object-or-prefix',
+            >>>                                 project='tog-dev-dt-lnd',
+            >>>                                 business_type='markets',
+            >>>                                 source_type='pos',
+            >>>                                 source='tenzo',
+            >>>                                 dimension='sales')
         """
+
+        # Quality Checks
+        # Ensure no underscores in source or dimension
+        for element in [source, dimension]:
+            if '_' in element:
+                return False, f"Error: {element} must not contain underscores."
+
+        if not etl_datetime_utc:
+            etl_datetime_utc = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+
+        # Build the GS bucket name, prefix and metadata
+        gs_bucket_name = self.build_gs_bucket_name(business_type, source_type)
+        gs_prefix = self.build_gs_prefix(source, ingestion_type, etl_datetime_utc, data_date)
+
+        metadata = self.build_gs_metadata(s3_bucket_name, s3_object_or_prefix_name, etl_datetime_utc, repo_name)
 
         # Retrieve the file(s) from S3 matching to the object
         logs.client.logger.info('Finding files in S3 bucket')
@@ -409,42 +578,60 @@ class Client:
         s3_files = self._get_keys_in_s3_bucket(
             aws_session=aws_session,
             bucket_name=s3_bucket_name,
-            prefix_name=s3_object_name,
+            prefix_name=s3_object_or_prefix_name,
             wildcard=wildcard)
 
-        logs.client.logger.info(f'Found {str(s3_files)} files in S3')
+        logs.client.logger.info(f'Found {len(s3_files)} files in S3')
 
-        # For every key found in s3, download to local and then upload to desired GS bucket.
+        # Get S3 and GS clients
         s3_client = s3.Client(aws_session)
         gs_client = gs.Client(self.project, impersonated_credentials=self.impersonated_credentials)
 
-        for s3_file in s3_files:
-            # Try to download the file to 'local'
+        # For every key found in s3, download to local and then upload to desired GS bucket.
+        for file_number, s3_file in enumerate(s3_files, start=0):
+            file_number = f"{file_number:03d}"  # zero-padded to 3 digits
+
+            # Try to download the file to local
             try:
                 local_file = s3_client.download(s3_bucket_name, s3_file)
                 logs.client.logger.info(f'Successfully downloaded {local_file} to local')
             except Exception as e:
                 logs.client.logger.error(f"Failed to download {local_file} to local: {e}")
-
-            gs_file_name = (gs_file_name if gs_file_name is not None else s3_file) \
-                if len(s3_files) == 1 else s3_file
+                return False, str(e)
 
             # Try to upload file from local to GCS.
             try:
-                gs_client.upload(local_file, gs_bucket_name, gs_file_name)
+                s3_file_extension = '.'.join(Path(s3_file).suffixes).lstrip('.')
+                gs_file_name = self.build_gs_file_name(
+                    source,
+                    dimension,
+                    etl_datetime_utc,
+                    data_date,
+                    file_number,
+                    s3_file_extension
+                )
+                gs_file_path = '/'.join([gs_prefix, gs_file_name])
+
+                gs_client.upload(
+                    source_file_name=local_file,
+                    bucket_name=gs_bucket_name,
+                    blob_name=gs_file_path,
+                    metadata=metadata
+                )
                 logs.client.logger.info(
-                    f'Successfully uploaded {local_file} to {gs_bucket_name}/{gs_file_name}')
+                    f'Successfully uploaded {local_file} to {gs_bucket_name}/{gs_file_path}')
             except Exception as e:
                 logs.client.logger.error(
                     f"Failed to upload {local_file} to {gs_bucket_name}/{gs_file_name}: {e}")
+                return False, str(e)
             finally:
                 if os.path.exists(local_file):
                     os.remove(local_file)
                     logs.client.logger.info(f'Deleted local file {local_file}')
 
-    def _get_keys_in_s3_bucket(
-        self, aws_session, bucket_name, prefix_name, wildcard=".*"
-    ):
+        return True, f'Successfully transferred {len(s3_files)} files from S3 to GS'
+
+    def _get_keys_in_s3_bucket(self, aws_session, bucket_name, prefix_name, wildcard='.*'):
         """Generate a list of keys for objects in an s3 bucket.
         Paginates the list_objects_v2 method to overcome 1000 key limit.
 
@@ -457,125 +644,41 @@ class Client:
         Returns:
             list: List of keys in that bucket that match the desired prefix
         """
-        s3_client_boto = aws_session.client("s3")
+        s3_client_boto = aws_session.client('s3')
         s3_files = []
-        paginator = s3_client_boto.get_paginator("list_objects_v2")
+        paginator = s3_client_boto.get_paginator('list_objects_v2')
 
         regex = re.compile(wildcard)
 
         pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix_name)
         for page in pages:
-            print(f"page: {page}")
-            for obj in page.get("Contents", []):
-                key = obj["Key"]
-                if not key.endswith("/") and re.match(regex, key):
-                    s3_files.append(obj.get("Key"))
+            for obj in page.get('Contents', []):
+                key = obj['Key']
+                if not key.endswith('/') and re.match(regex, key):
+                    s3_files.append(obj.get('Key'))
 
         return s3_files
 
-    def s3_to_bq(
-        self,
-        aws_session,
-        bucket_name,
-        s3_key,
-        bq_table,
-        write_preference="truncate",
-        gs_bucket_name=None,
-        transform_fn=None,
-        schema=None,
-        partition_field=None,
-        partition_date=None,
-    ):
+    def load_gcs_file_as_dataframe(self, blob) -> pd.DataFrame:
         """
-        Transfer CSV files from S3 → GCS → BigQuery with optional transformations and partitioning.
-
+        Loads a GCS blob into a pandas dataframe
         Args:
-            aws_session: Authenticated AWS session
-            bucket_name (str): Source S3 bucket
-            s3_key (str): S3 prefix (e.g. "ozone/2025-09-23")
-            bq_table (str): Target BigQuery table
-            write_preference (str): "truncate", "append", or "empty"
-            gs_bucket_name (str): GCS bucket for staging
-            transform_fn (callable): Optional function applied to DataFrame
-            schema (list): BigQuery schema
-            partition_field (str): Column to use for DAY partitioning
-            partition_date (str): Partition date as 'YYYYMMDD'
+            blob: The GCS blob object
+        Returns:
+            pd.DataFrame: The pandas dataframe
+        Example:
+            >>> from to_data_library.data import transfer
+            >>> client = transfer.Client(project='my-project-id')
+            >>> gs_client = gs.Client(project='my-project-id')
+            >>> bucket = gs_client.bucket('my-bucket-name')
+            >>> blob = bucket.blob('my-blob-name')
+            >>> df = client.load_gcs_file_as_dataframe(blob)
         """
-
-        logs.client.logger.info(f"[s3_to_bq] Starting transfer for table: {bq_table}")
-        logs.client.logger.info(f"[s3_to_bq] S3 bucket: {bucket_name}")
-        logs.client.logger.info(f"[s3_to_bq] S3 prefix: {s3_key}")
-        logs.client.logger.info(f"[s3_to_bq] Write preference: {write_preference}")
-
-        s3_client = s3.Client(aws_session)
-        files = s3_client.list_files(bucket_name, path=s3_key)
-        if not files:
-            logs.client.logger.error(f"[s3_to_bq] No files found in S3 at prefix: '{s3_key}'")
-            return False, []
-
-        logs.client.logger.info(f"[s3_to_bq] Found {len(files)} file(s): {[f['name'] for f in files]}")
-
-        staged_uris = []
-        gs_client = gs.Client(self.project, impersonated_credentials=self.impersonated_credentials)
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            for file in files:
-                # Skip directory entries
-                if file["name"].endswith("/"):
-                    logs.client.logger.info(f"[s3_to_bq] Skipping directory entry: {file['name']}")
-                    continue
-                local_file = os.path.join(tmpdir, os.path.basename(file["name"]))
-                logs.client.logger.info(f"[s3_to_bq] Downloading S3 file {file['name']} → {local_file}")
-                s3_client.download(bucket_name, file["name"], local_path=local_file)
-
-                if transform_fn:
-                    df = pd.read_csv(local_file)
-                    df = transform_fn(df)
-                    df.to_csv(local_file, index=False)
-                    logs.client.logger.info("[s3_to_bq] Applied transform_fn and saved transformed CSV")
-
-                gs_file_name = os.path.basename(file["name"])
-                gs_client.upload(local_file, gs_bucket_name, gs_file_name)
-                gs_uri = f"gs://{gs_bucket_name}/{gs_file_name}"
-                staged_uris.append(gs_uri)
-                logs.client.logger.info(f"[s3_to_bq] Uploaded to GCS: {gs_uri}")
-
-        # BigQuery load job
-        bq_client = bq.Client(self.project, impersonated_credentials=self.impersonated_credentials)
-        project, dataset_id, table_id = bq_table.split('.')
-        dataset_ref = bigquery.DatasetReference(project, dataset_id)
-        table_ref = bigquery.TableReference(dataset_ref, table_id=table_id)
-
-        write_disposition = {
-            "truncate": bigquery.WriteDisposition.WRITE_TRUNCATE,
-            "append": bigquery.WriteDisposition.WRITE_APPEND,
-            "empty": bigquery.WriteDisposition.WRITE_EMPTY,
-        }.get(write_preference.lower(), bigquery.WriteDisposition.WRITE_TRUNCATE)
-
-        job_config = bigquery.LoadJobConfig(
-            source_format=bigquery.SourceFormat.CSV,
-            write_disposition=write_disposition,
-            autodetect=schema is None,
-            schema=schema,
-            allow_quoted_newlines=True,
-            skip_leading_rows=1,
-        )
-
-        if partition_field:
-            if not partition_date:
-                raise ValueError("partition_field supplied without partition_date")
-            job_config.time_partitioning = bigquery.TimePartitioning(
-                type_=bigquery.TimePartitioningType.DAY,
-                field=partition_field,
-            )
-            table_ref = bigquery.TableReference(dataset_ref, table_id=f"{table_id}${partition_date}")
-
-        logs.client.logger.info(f"[s3_to_bq] Loading into BigQuery from staged files: {staged_uris}")
-        try:
-            bq_client.load_table_from_uris(staged_uris, table_ref, job_config=job_config)
-        except Exception as e:
-            logs.client.logger.error(f"[s3_to_bq] Failed to load table: {e}")
-            return False, staged_uris
-
-        logs.client.logger.info(f"[s3_to_bq] Successfully loaded data into {bq_table}")
-        return True, staged_uris
+        file_type = blob.name.split('.')[-1]
+        data = BytesIO(blob.download_as_bytes())
+        if file_type == 'csv':
+            return pd.read_csv(data)
+        elif file_type == 'json':
+            return pd.read_json(data, lines=True)
+        else:
+            raise ValueError(f"Unsupported file type: {file_type}")
