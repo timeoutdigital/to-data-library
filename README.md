@@ -62,7 +62,7 @@ Or, using workspace setup:
 timeout-tools ws to-data-library <jira_ticket>
 ```
 
-- setup.py includes a list of the 3rd party packages required by the this package when distbuted.
+- setup.py includes a list of the 3rd party packages required by the this package when distributed.
 
 ### Install dependencies
 
