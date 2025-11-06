@@ -114,7 +114,7 @@ This library is not intended to be run directly or as a standalone service. It d
 
 ## AWS & GCP Resource Access
 
-- The Data Apps run as is allowed to use specific prod/staging AWS IAM Roles.
+- The Data Apps run as allowed by specific prod/staging AWS IAM Roles.
 - These AWS IAM Roles are defined in:
     - https://github.com/timeoutdigital/platform/blob/master/cloudformation/data-app-base.yml
 
