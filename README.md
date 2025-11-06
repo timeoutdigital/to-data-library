@@ -1,6 +1,6 @@
 
 
-# to-data-library
+# Time Out Data Library
 
 to-data-library is a Python library for data extraction, transformation, and loading (ETL) across multiple platforms (GCS, S3, BigQuery, FTP, etc). It is intended to be imported and used as a module within other data engineering projects, scripts, or pipelines. This is not a standalone application and is not designed to be run directly, in Docker, or via Airflow on its own.
 
