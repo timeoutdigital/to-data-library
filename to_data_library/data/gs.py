@@ -1,11 +1,14 @@
 import gzip
 import json
 from io import BytesIO, TextIOWrapper
+from typing import Optional
 
 import ndjson
 from google.cloud import storage
 
 from to_data_library.data import logs
+from to_data_library.data._helper import (gcs_bucket_name, gcs_filename,
+                                          gcs_prefix)
 
 
 class Client:
@@ -36,20 +39,59 @@ class Client:
         with open(destination_file_name, "wb") as file_obj:
             self.storage_client.download_blob_to_file(gs_uri, file_obj)
 
-    def upload(self, source_file_name, bucket_name, blob_name=None, metadata=None):
-        """Upload from local to Google Storage.
-
-        Args:
-            source_file_name (str):  The source file name.
-            bucket_name (str):  The Google Storage bucket name (no 'gs://' prefix).
-            blob_name (str): The destination file name in the bucket, if not provided source file name will be used.
+    def upload(
+        self,
+        local_path: str,
+        business_type: str,
+        source_type: str,
+        source: str,
+        dimension: str,
+        ingestion_type: str,
+        etl_datetime_utc,
+        file_extension: str,
+        data_date: Optional[str] = None,
+        file_number: Optional[str] = None,
+        metadata: Optional[dict] = None,
+    ) -> str:
         """
-        if not blob_name:
-            blob_name = source_file_name.split("/")[-1]
+        Uploads a local file to Google Cloud Storage using enforced naming conventions.
 
-        blob = self.storage_client.bucket(bucket_name).blob(blob_name)
+        Bucket name, prefix, and file name are all derived using shared helper methods.
+        Callers must not construct GCS paths manually.
+
+        Returns:
+            str: GCS object path relative to the bucket.
+        """
+
+        bucket_name = gcs_bucket_name(
+            project=self.project,
+            business_type=business_type,
+            source_type=source_type,
+        )
+
+        prefix = gcs_prefix(
+            source=source,
+            ingestion_type=ingestion_type,
+            etl_datetime_utc=etl_datetime_utc,
+            date=data_date,
+        )
+
+        file_name = gcs_filename(
+            source=source,
+            dimension=dimension,
+            etl_datetime_utc=etl_datetime_utc,
+            data_date=data_date,
+            file_number=file_number,
+            file_extension=file_extension,
+        )
+
+        blob_path = f"{prefix}/{file_name}"
+
+        blob = self.storage_client.bucket(bucket_name).blob(blob_path)
         blob.metadata = metadata
-        blob.upload_from_filename(source_file_name)
+        blob.upload_from_filename(local_path)
+
+        return blob_path
 
     def get_blobs(self, bucket_name, prefix=None):
         """Get the blobs in a bucket

@@ -10,8 +10,9 @@ from google.api_core import exceptions
 from google.cloud import bigquery, storage
 
 from to_data_library.data import bq, ftp, gs, logs, s3
-from to_data_library.data._helper import (build_gs_metadata, gcs_filename,
-                                          gcs_prefix, get_bq_write_disposition,
+from to_data_library.data._helper import (gcs_bucket_name, gcs_filename,
+                                          gcs_metadata, gcs_prefix,
+                                          get_bq_write_disposition,
                                           merge_files)
 
 
@@ -137,7 +138,11 @@ class Client:
             (bool, str): Tuple with success status and message
         """
 
-        bucket_name = self.build_gs_bucket_name(business_type, source_type)
+        bucket_name = gcs_bucket_name(
+            project=self.project,
+            business_type=business_type,
+            source_type=source_type,
+        )
         prefix = gcs_prefix(source, ingestion_type, etl_datetime_utc, data_date)
         file_name = gcs_filename(source, dimension, etl_datetime_utc, data_date, file_number)
 
@@ -408,21 +413,6 @@ class Client:
         s3_client.upload(local_file,
                          s3_bucket)
 
-    def build_gs_bucket_name(self, business_type, source_type) -> str:
-        """
-        Builds the gs bucket name based on business type and source type
-        Args:
-            business_type (str): The business type of the data being ingested. Generally 'markets' or 'web'.
-            source_type (str): The source type of the data being ingested. E.g. 'pos', 'user', 'db', 'tracking', 'ads'
-        Returns:
-            str: The gs bucket name
-        Example:
-            >>> from to_data_library.data import transfer
-            >>> client = transfer.Client(project='my-project-id')
-            >>> bucket_name = client.build_gs_bucket_name('markets', 'pos')
-        """
-        return '-'.join([self.project, business_type, source_type])
-
     def s3_to_gs(
             self,
             aws_session,
@@ -487,10 +477,14 @@ class Client:
             etl_datetime_utc = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
 
         # Build the GS bucket name, prefix and metadata
-        gs_bucket_name = self.build_gs_bucket_name(business_type, source_type)
+        gs_bucket_name = gcs_bucket_name(
+            project=self.project,
+            business_type=business_type,
+            source_type=source_type,
+        )
         gs_prefix = gcs_prefix(source, ingestion_type, etl_datetime_utc, data_date)
 
-        metadata = build_gs_metadata(s3_bucket_name, s3_object_or_prefix_name, etl_datetime_utc, repo_name)
+        metadata = gcs_metadata(s3_bucket_name, s3_object_or_prefix_name, etl_datetime_utc, repo_name)
 
         # Retrieve the file(s) from S3 matching to the object
         logs.client.logger.info('Finding files in S3 bucket')

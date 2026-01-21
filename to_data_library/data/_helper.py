@@ -129,7 +129,7 @@ def gcs_filename(source, dimension, etl_datetime_utc, data_date=None, file_numbe
     return file_name
 
 
-def build_gs_metadata(s3_bucket_name, s3_object_name, etl_datetime_utc, repo_name) -> dict:
+def gcs_metadata(s3_bucket_name, s3_object_name, etl_datetime_utc, repo_name) -> dict:
     """
     Builds the gs metadata based on s3 bucket name, s3 object name and etl datetime.
 
@@ -148,3 +148,34 @@ def build_gs_metadata(s3_bucket_name, s3_object_name, etl_datetime_utc, repo_nam
         'etl_datetime_utc': etl_datetime_utc,
         'repo_name': repo_name
     }
+
+
+def gcs_bucket_name(project: str, business_type: str, source_type: str) -> str:
+    """
+    Builds a Google Cloud Storage bucket name using the standard naming convention.
+
+    The bucket name is composed as:
+        '{gcp_project}-{business_type}-{source_type}'
+
+    Args:
+        project (str):
+            Google Cloud project ID that owns the bucket
+            (e.g. 'tog-dev-dt-lnd', 'tog-prod-dt-lnd').
+        business_type (str):
+            The business domain of the data being ingested
+            (e.g. 'markets', 'web').
+        source_type (str):
+            The source category of the data being ingested
+            (e.g. 'pos', 'user', 'db', 'tracking', 'ads').
+
+    Returns:
+        str:
+            The Google Cloud Storage bucket name (without 'gs://').
+
+    Raises:
+        ValueError:
+            If any input is missing or invalid.
+    """
+    if not all(isinstance(x, str) and x for x in [project, business_type, source_type]):
+        raise ValueError("project, business_type and source_type must be non-empty strings")
+    return f"{project}-{business_type}-{source_type}"
