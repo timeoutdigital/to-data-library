@@ -10,7 +10,9 @@ from google.api_core import exceptions
 from google.cloud import bigquery, storage
 
 from to_data_library.data import bq, ftp, gs, logs, s3
-from to_data_library.data._helper import get_bq_write_disposition, merge_files
+from to_data_library.data._helper import (build_gs_metadata, gcs_filename,
+                                          gcs_prefix, get_bq_write_disposition,
+                                          merge_files)
 
 
 class Client:
@@ -136,8 +138,8 @@ class Client:
         """
 
         bucket_name = self.build_gs_bucket_name(business_type, source_type)
-        prefix = self.build_gs_prefix(source, ingestion_type, etl_datetime_utc, data_date)
-        file_name = self.build_gs_file_name(source, dimension, etl_datetime_utc, data_date, file_number)
+        prefix = gcs_prefix(source, ingestion_type, etl_datetime_utc, data_date)
+        file_name = gcs_filename(source, dimension, etl_datetime_utc, data_date, file_number)
 
         if job_config_kwargs is None:
             job_config_kwargs = {}
@@ -421,85 +423,6 @@ class Client:
         """
         return '-'.join([self.project, business_type, source_type])
 
-    def build_gs_prefix(self, source, ingestion_type, etl_datetime_utc, data_date=None) -> str:
-        """
-        Builds the gs prefix based on source, ingestion type, etl datetime and data date
-        Args:
-            source (str): The source of the data being ingested. E.g. 'mariadb_datacafe', 'tenzo', 'facebook'
-            ingestion_type (str): The type of ingestion. Either 'batch' or 'stream'.
-            etl_datetime_utc (str): load datetime string to use in the path
-            data_date (str): effective date of the data if one exists
-        Returns:
-            str: The gs prefix
-        Example:
-            >>> from to_data_library.data import transfer
-            >>> client = transfer.Client(project='my-project-id')
-            >>> prefix = client.build_gs_prefix('tenzo', 'batch', '20250102_120000', '2021-01-01')
-        """
-        parts = [source, ingestion_type]
-        if data_date:
-            parts.append(data_date)
-        parts.append(etl_datetime_utc)
-        return '/'.join(parts)
-
-    def build_gs_file_name(
-            self,
-            source,
-            dimension,
-            etl_datetime_utc,
-            data_date=None,
-            file_number=None,
-            file_extension=None
-    ) -> str:
-        """
-        Builds the gs file name based on source, dimension, data date, etl datetime and file number
-        Args:
-            source (str): The source of the data being ingested. E.g. 'mariadb_datacafe', 'tenzo', 'facebook'
-            dimension (str): The dimension of the data being ingested. E.g. 'audience', 'sales'
-            etl_datetime_utc (str): load datetime string to use in the path
-            data_date (str): The effective data date, e.g. '2021-01-01'
-            file_number (str): The file number
-            file_extension (str): The file extension without the leading dot, e.g. 'csv', 'parquet'
-        Returns:
-            str: The gs file name
-        Example:
-            >>> from to_data_library.data import transfer
-            >>> client = transfer.Client(project='my-project-id')
-            >>> file_name = client.build_gs_file_name('tenzo', 'sales', '2021-01-01', '20250102_120000', '000')
-        """
-        parts = [source, dimension]
-        if data_date:
-            parts.append(data_date)
-        parts.append(etl_datetime_utc)
-        if file_number:
-            parts.append(file_number)
-        file_name = '_'.join(parts)
-        if file_extension:
-            file_name = '.'.join([file_name, file_extension])
-        return file_name
-
-    def build_gs_metadata(self, s3_bucket_name, s3_object_name, etl_datetime_utc, repo_name) -> dict:
-        """
-        Builds the gs metadata based on s3 bucket name, s3 object name and etl datetime
-        Args:
-            s3_bucket_name (str): s3 bucket name
-            s3_object_name (str): s3 object name
-            etl_datetime_utc (str): load datetime string to use in the path
-            repo_name (str): The name of the repo that is running the ingestion
-        Returns:
-            dict: The gs metadata
-        Example:
-            >>> from to_data_library.data import transfer
-            >>> client = transfer.Client(project='my-project-id')
-            >>> metadata = client.build_gs_metadata('my-s3-bucket', 'my-s3-object', '20250102_120000', 'da-my-repo')
-        """
-        return {
-            's3_bucket_name': s3_bucket_name,
-            's3_object_name': s3_object_name,
-            'etl_datetime_utc': etl_datetime_utc,
-            'repo_name': repo_name
-        }
-
     def s3_to_gs(
             self,
             aws_session,
@@ -565,9 +488,9 @@ class Client:
 
         # Build the GS bucket name, prefix and metadata
         gs_bucket_name = self.build_gs_bucket_name(business_type, source_type)
-        gs_prefix = self.build_gs_prefix(source, ingestion_type, etl_datetime_utc, data_date)
+        gs_prefix = gcs_prefix(source, ingestion_type, etl_datetime_utc, data_date)
 
-        metadata = self.build_gs_metadata(s3_bucket_name, s3_object_or_prefix_name, etl_datetime_utc, repo_name)
+        metadata = build_gs_metadata(s3_bucket_name, s3_object_or_prefix_name, etl_datetime_utc, repo_name)
 
         # Retrieve the file(s) from S3 matching to the object
         logs.client.logger.info('Finding files in S3 bucket')
@@ -602,7 +525,7 @@ class Client:
             # Try to upload file from local to GCS.
             try:
                 s3_file_extension = '.'.join(Path(s3_file).suffixes).lstrip('.')
-                gs_file_name = self.build_gs_file_name(
+                gs_file_name = gcs_filename(
                     source,
                     dimension,
                     etl_datetime_utc,
