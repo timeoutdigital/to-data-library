@@ -164,6 +164,3 @@ testing/
 
 # VIM
 *.swp
-
-# py-env
-.python-version
