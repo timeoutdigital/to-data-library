@@ -2058,7 +2058,7 @@ wheels = [
 
 [[package]]
 name = "to-data-library"
-version = "1.0.17"
+version = "2.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "boto3" },
