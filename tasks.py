@@ -10,7 +10,7 @@ def test(ctx):
 @task
 def coverage(ctx):
     """Run test coverage."""
-    ctx.run("coverage run -m unittest && coverage report --fail-under=78", pty=True)
+    ctx.run("coverage run -m pytest && coverage report --fail-under=78", pty=True)
 
 
 @task
