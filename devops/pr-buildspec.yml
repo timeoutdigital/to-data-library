@@ -11,7 +11,7 @@ phases:
   install:
     on-failure: ABORT
     runtime-versions:
-      python: 3.10
+      python: 3.13
     commands:
     - pip install -r requirements.txt
 
@@ -19,5 +19,5 @@ phases:
     on-failure: ABORT
     commands:
     - SKIP=no-commit-to-branch pre-commit run --all-files
-    - coverage run -m unittest
+    - coverage run -m pytest
     - coverage report --fail-under=78

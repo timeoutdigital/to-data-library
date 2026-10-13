@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "to-data-library"
+version = "2.1.0"
+description = "Time Out Data Engineering Library"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "boto3",
+    "delegator.py",
+    "google-api-core",
+    "google-api-python-client",
+    "google-cloud-bigquery",
+    "google-cloud-storage",
+    "jinja2",
+    "markupsafe",
+    "ndjson",
+    "oauth2client",
+    "pandas",
+    "paramiko",
+    "parse",
+    "pyarrow",
+    "pysftp",
+]
+
+[dependency-groups]
+dev = [
+    "coverage",
+    "invoke",
+    "moto[s3]",
+    "pre-commit-uv",
+    "pytest>=8.0.0",
+    "ruff>=0.9.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["to_data_library*"]
+
+[tool.pytest.ini_options]
+pythonpath = "."
+
+[tool.ruff]
+line-length = 120

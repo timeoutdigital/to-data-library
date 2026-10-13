@@ -74,7 +74,7 @@ invoke python-install-requirements
 ### Running Unit Tests
 
 ```sh
-coverage run -m unittest
+coverage run -m pytest
 coverage report
 ```
 
